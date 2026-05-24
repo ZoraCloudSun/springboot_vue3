@@ -1,11 +1,19 @@
 import request from './index'
 
-export function register(username, password) {
-  return request.post('/user/register', { username, password })
+export function getCaptcha() {
+  return request.get('/user/captcha')
 }
 
-export function login(username, password) {
-  return request.post('/user/login', { username, password })
+export function sendCode(email, captchaId, captchaCode) {
+  return request.post('/user/send-code', { email, captchaId, captchaCode })
+}
+
+export function register(email, password, code, captchaId, captchaCode) {
+  return request.post('/user/register', { email, password, code, captchaId, captchaCode })
+}
+
+export function login(username, password, captchaId, captchaCode) {
+  return request.post('/user/login', { username, password, captchaId, captchaCode })
 }
 
 export function logout() {

@@ -15,43 +15,67 @@ public class UserController {
     private UserService userService;
 
     /**
-     * 用户注册 —— 无需 Token，开放访问
+     * 获取图形验证码 —— 无需 Token，开放访问
+     * 返回 captchaId（用于校验时标识）和 base64 图片
+     */
+    @GetMapping("/captcha")
+    public ResponseUtil captcha() {
+        Map<String, String> data = userService.generateCaptcha();
+        return new ResponseUtil(200, "验证码生成成功", data);
+    }
+
+    /**
+     * 发送邮箱验证码 —— 需要先通过图形验证码校验
+     * 60秒内同一邮箱只能发送一次，邮箱验证码5分钟有效
+     */
+    @PostMapping("/send-code")
+    public ResponseUtil sendCode(@RequestBody Map<String, String> body) {
+        return userService.sendCode(
+                body.get("email"),
+                body.get("captchaId"),
+                body.get("captchaCode")
+        );
+    }
+
+    /**
+     * 邮箱验证码注册 —— 需要图形验证码 + 邮箱验证码
+     * 邮箱即用户名，双重验证通过后写入数据库
      */
     @PostMapping("/register")
     public ResponseUtil register(@RequestBody Map<String, String> body) {
-        return userService.register(body.get("username"), body.get("password"));
+        return userService.register(
+                body.get("email"),
+                body.get("password"),
+                body.get("code"),
+                body.get("captchaId"),
+                body.get("captchaCode")
+        );
     }
 
     /**
-     * 用户登录 —— 无需 Token，返回双 Token（accessToken + refreshToken）
+     * 用户登录 —— 需要图形验证码校验
+     * 验证通过后返回双 Token（accessToken + refreshToken）
      */
     @PostMapping("/login")
     public ResponseUtil login(@RequestBody Map<String, String> body) {
-        return userService.login(body.get("username"), body.get("password"));
+        return userService.login(
+                body.get("username"),
+                body.get("password"),
+                body.get("captchaId"),
+                body.get("captchaCode")
+        );
     }
 
-    /**
-     * 用户登出 —— 需要 accessToken，清除 Redis 中两个 Token
-     */
     @PostMapping("/logout")
     public ResponseUtil logout(@RequestHeader("Authorization") String token) {
         return userService.logout(token);
     }
 
-    /**
-     * 刷新 accessToken —— 无需 accessToken，用 refreshToken 换取新的 accessToken
-     * 此接口被拦截器放行，在 Service 层直接校验 refreshToken
-     * 前端 Axios 在收到 401 时自动调用此接口，用户无感知
-     */
     @PostMapping("/refresh")
     public ResponseUtil refresh(@RequestBody Map<String, String> body) {
         return userService.refresh(body.get("refreshToken"));
     }
 
-    /**
-     * 鉴权探针接口 —— 需要有效的 accessToken 才能访问
-     * 能走到这里说明 LoginInterceptor 校验已通过
-     */
     @GetMapping("/info")
     public ResponseUtil info() {
         return new ResponseUtil(200, "鉴权通过，可正常访问", null);

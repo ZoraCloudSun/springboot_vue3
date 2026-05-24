@@ -56,6 +56,24 @@
                 show-password
               />
             </el-form-item>
+            <!-- 图形验证码 -->
+            <el-form-item prop="captchaCode">
+              <div class="captcha-row">
+                <el-input
+                  v-model="form.captchaCode"
+                  placeholder="请输入验证码"
+                  :prefix-icon="CircleCheck"
+                  class="captcha-input"
+                />
+                <img
+                  class="captcha-img"
+                  :src="captchaImage"
+                  alt="图形验证码"
+                  title="点击刷新验证码"
+                  @click="refreshCaptcha"
+                />
+              </div>
+            </el-form-item>
             <el-form-item>
               <el-button
                 class="btn-login"
@@ -153,11 +171,11 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { User, Lock, UserFilled, PictureFilled, ArrowLeft } from '@element-plus/icons-vue'
+import { User, Lock, UserFilled, PictureFilled, ArrowLeft, CircleCheck } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { login } from '@/api/user'
+import { login, getCaptcha } from '@/api/user'
 import { setTokens } from '@/utils/token'
 
 const router = useRouter()
@@ -165,29 +183,52 @@ const formRef = ref(null)
 const loading = ref(false)
 const activeTab = ref('password')
 const allChecked = ref(true)
+const captchaImage = ref('')
+const captchaId = ref('')
 
 const form = reactive({
   username: '',
   password: '',
+  captchaCode: '',
 })
 
 const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  username: [{ required: true, message: '请输入用户名/邮箱', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码不能少于6位', trigger: 'blur' },
   ],
+  captchaCode: [{ required: true, message: '请输入图形验证码', trigger: 'blur' }],
 }
+
+// 刷新图形验证码
+const refreshCaptcha = async () => {
+  try {
+    const res = await getCaptcha()
+    captchaImage.value = res.data.captchaImage
+    captchaId.value = res.data.captchaId
+    form.captchaCode = ''
+  } catch {
+    // 错误由拦截器统一处理
+  }
+}
+
+onMounted(() => {
+  refreshCaptcha()
+})
 
 const handleLogin = async () => {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
   loading.value = true
   try {
-    const res = await login(form.username, form.password)
+    const res = await login(form.username, form.password, captchaId.value, form.captchaCode)
     setTokens(res.data.accessToken, res.data.refreshToken)
     ElMessage.success('登录成功')
     router.push('/home')
+  } catch {
+    // 登录失败时刷新验证码
+    refreshCaptcha()
   } finally {
     loading.value = false
   }
@@ -224,8 +265,8 @@ const showAgreement = (type) => {
 
 .login-container {
   display: flex;
-  width: 900px;
-  min-height: 560px;
+  width: 960px;
+  min-height: 580px;
   background-color: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
@@ -235,12 +276,17 @@ const showAgreement = (type) => {
 /* ======== 左侧登录区域 ======== */
 .login-left {
   width: 50%;
-  padding: 40px;
+  padding: 44px 48px;
+}
+
+/* 表单整体间距 */
+.login-left :deep(.el-form-item) {
+  margin-bottom: 22px;
 }
 
 .logo-area {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .logo-icon {
@@ -303,6 +349,30 @@ const showAgreement = (type) => {
   font-size: 12px;
   color: #999;
   margin-bottom: 16px;
+}
+
+/* 图形验证码 */
+.captcha-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.captcha-input {
+  flex: 1;
+}
+
+.captcha-img {
+  width: 150px;
+  height: 30px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #e5e5e5;
+  flex-shrink: 0;
+}
+
+.captcha-img:hover {
+  border-color: #31c27c;
 }
 
 /* 登录按钮 */
@@ -444,7 +514,7 @@ const showAgreement = (type) => {
 .login-right {
   width: 50%;
   background-color: #f9fbf9;
-  padding: 40px;
+  padding: 44px 48px;
   border-left: 1px solid #e8e8e8;
   display: flex;
   flex-direction: column;
@@ -534,7 +604,7 @@ const showAgreement = (type) => {
   }
 
   .login-right {
-    padding: 24px;
+    padding: 28px 24px;
   }
 }
 </style>

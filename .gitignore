@@ -1,0 +1,22 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### 配置文件（含敏感信息，仅保留模板） ###
+springboot/src/main/resources/application.yml
+
+### IDE ###
+.idea/
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### 本地笔记 ###
+git相关命令.md
+
+### 依赖与构建产物 ###
+node_modules/
+dist/
+*.log

@@ -11,6 +11,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cd springboot
 mvn spring-boot:run
 
+# Run tests (171 tests, ~10 seconds)
+cd springboot
+mvn test
+
 # Frontend (Vite dev server, port 3000)
 cd web/frontend
 npm install
@@ -168,6 +172,35 @@ Vue Component  →  api/user.js  →  api/index.js (Axios instance)
 - `WechatUtil.java`: HTTP client for WeChat APIs (`code→access_token`, `access_token→userinfo`) with inner DTO classes
 - Callback URL format: `https://{ngrok-domain}/user/wechat/callback`
 - Test account credentials are in `application.yml` with environment variable fallbacks (`${WECHAT_APP_ID:default}`)
+
+---
+
+## Testing
+
+**Framework**: JUnit 5 + Mockito + Spring MockMvc (standalone setup). All 171 tests run as pure unit tests — no MySQL/Redis/network dependency, CI-ready.
+
+**Run**: `cd springboot && mvn test` (~10 seconds, 0 failures).
+
+**Three-tier mock strategy**:
+
+| Tier | Pattern | Used in |
+| ---- | ------- | ------- |
+| Pure JUnit 5 | `@Test` only, no Spring context | `ResponseUtilTest`, `CaptchaUtilTest`, `JwtUtilTest` |
+| Mockito + `ReflectionTestUtils` | `@ExtendWith(MockitoExtension.class)` + `@InjectMocks` / `@Mock` + `@Spy` | `UserServiceImplTest`, `LoginInterceptorTest`, `RoleInterceptorTest` |
+| Standalone MockMvc | `MockMvcBuilders.standaloneSetup()` + `.setControllerAdvice()` | `UserControllerTest`, `GlobalExceptionHandlerTest` |
+
+**Why standalone MockMvc instead of `@WebMvcTest`**: `@WebMvcTest` fails to load because `@MapperScan` on `AppStart` creates `UserMapper` bean needing `sqlSessionFactory`. Standalone setup avoids the Spring context entirely while still testing controller request/response contracts.
+
+**Key conventions**:
+
+- `@DisplayName("中文描述")` on every test — consistent Chinese naming
+- `@Nested` inner classes for grouping related scenarios (per method or per endpoint)
+- `lenient()` on shared `@BeforeEach` stubs to avoid `UnnecessaryStubbingException`
+- `ReflectionTestUtils.setField()` for injecting `@Value` fields without Spring context
+- Real `BCryptPasswordEncoder` (spied) for service tests — no external dependency
+- Standalone MockMvc controllers wired with `ReflectionTestUtils.setField(controller, "userService", mock)` + `.setControllerAdvice(new GlobalExceptionHandler())`
+
+**Test config**: `springboot/src/test/resources/application.yml` provides H2 datasource + placeholder credentials for `@Value` injection — but pure unit tests (all current 171 tests) never load it.
 
 ---
 

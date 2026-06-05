@@ -70,6 +70,15 @@
 │       └── resources/
 │           ├── application.yml          # 应用配置（含微信凭证）
 │           └── init.sql                 # 数据库初始化
+│   └── src/test/                        # 单元测试（JUnit 5 + Mockito + MockMvc）
+│       ├── java/com/zyt/
+│       │   ├── utils/                   # ResponseUtil / CaptchaUtil / JwtUtil（纯 JUnit 5）
+│       │   ├── service/                 # UserServiceImpl（Mockito + @InjectMocks）
+│       │   ├── config/                  # LoginInterceptor / RoleInterceptor（Mockito）
+│       │   ├── controller/              # UserController（Standalone MockMvc）
+│       │   └── exception/               # GlobalExceptionHandler（MockMvc + 内嵌 Controller）
+│       └── resources/
+│           └── application.yml          # 测试环境配置（H2 内存数据库）
 ├── web/frontend/                        # 前端 Vue 3 + Vite 工程
 │   ├── vite.config.js                   # Vite 配置（代理 + 按需导入）
 │   ├── package.json                     # 依赖清单
@@ -151,6 +160,9 @@ spring:
 cd springboot
 mvn spring-boot:run
 # → http://localhost:8080
+
+# 运行单元测试（171 个测试，~10 秒）
+mvn test
 ```
 
 ### 6. 启动前端
@@ -371,7 +383,7 @@ Axios 成功拦截器:
 | [WECHAT_SETUP_GUIDE.md](WECHAT_SETUP_GUIDE.md) | 微信扫码登录完整配置指南：测试号获取→ngrok→架构图→测试→FAQ |
 | [P0_SECURITY_FIX.md](P0_SECURITY_FIX.md) | P0 安全修复记录：Token 类型校验 + 暴力破解防护 |
 | [DB_MIGRATION.sql](DB_MIGRATION.sql) | 数据库迁移脚本：添加微信字段 |
-| [APITest.http](APITest.http) | HTTP Client 测试文件，覆盖全部 API 场景 |
+| [APITest.http](springboot/APITest.http) | HTTP Client 测试文件，覆盖全部 16 个端点的 40+ 个场景（含自动 Token 捕获） |
 
 ---
 
@@ -410,7 +422,7 @@ Axios 成功拦截器:
 - [x] 角色权限控制（RBAC）
 - [x] 全局异常处理（`@ControllerAdvice`）
 - [x] Swagger / Knife4j 接口文档
-- [ ] 单元测试（JUnit 5 + MockMvc）
+- [x] 单元测试（JUnit 5 + MockMvc）— 171 个测试，8 个测试类，覆盖全链路
 - [ ] Docker 容器化（docker-compose 一键启动）
 - [ ] GitHub Actions CI/CD
 

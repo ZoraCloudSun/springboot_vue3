@@ -1,94 +1,486 @@
+# ============================================================
+# Spring Boot + Vue3 用户认证系统 — API 测试文件
+# ============================================================
+# 使用 IntelliJ IDEA / VS Code REST Client 插件直接运行
+#
+# 使用说明：
+#   1. 先启动后端：cd springboot && mvn spring-boot:run
+#   2. 按顺序执行：获取验证码 → 发送邮箱验证码 → 注册 → 登录
+#   3. 登录成功后 accessToken 和 refreshToken 自动捕获到变量
+#   4. 之后可直接测试受保护端点（info、me、logout、admin/users）
+#   5. 找回密码和微信流程需独立按说明操作
+# ============================================================
+
 @baseUrl = http://localhost:8080/user
 @contentType = application/json
 
-### ==================== 1. 注册测试 ====================
+# ============================================================
+# 变量（登录成功后自动填充）
+# ============================================================
+@accessToken = {{accessToken}}
+@refreshToken = {{refreshToken}}
+@captchaId = {{captchaId}}
+@sceneId = {{sceneId}}
 
-### 1.1 注册成功
+# ============================================================
+# 0. 图形验证码
+# ============================================================
+
+### 0.1 获取图形验证码（复制返回的 captchaId 到下方变量）
+GET {{baseUrl}}/captcha
+
+### 0.2 获取图形验证码（第二次，验证每次不同）
+GET {{baseUrl}}/captcha
+
+# ============================================================
+# 1. 邮箱验证码注册流程
+# ============================================================
+
+### 1.1 发送注册验证码（替换为真实邮箱）
+POST {{baseUrl}}/send-code
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com"
+}
+
+### 1.2 发送注册验证码 — 空邮箱（应失败 400）
+POST {{baseUrl}}/send-code
+Content-Type: {{contentType}}
+
+{
+    "email": ""
+}
+
+### 1.3 发送注册验证码 — 格式错误（应失败 400）
+POST {{baseUrl}}/send-code
+Content-Type: {{contentType}}
+
+{
+    "email": "not-an-email"
+}
+
+### 1.4 发送注册验证码 — 60 秒内重复发送（应失败 429）
+POST {{baseUrl}}/send-code
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com"
+}
+
+### 1.5 注册（替换为真实邮箱、验证码、图形验证码 captchaId 和 captchaCode）
 POST {{baseUrl}}/register
 Content-Type: {{contentType}}
 
 {
-    "username": "test_user",
-    "password": "123456"
+    "email": "your_email@163.com",
+    "password": "password123",
+    "code": "123456"
 }
 
-### 1.2 重复用户名注册（应失败）
+### 1.6 注册 — 密码不足 6 位（应失败 400）
 POST {{baseUrl}}/register
 Content-Type: {{contentType}}
 
 {
-    "username": "test_user",
-    "password": "123456"
+    "email": "your_email@163.com",
+    "password": "12345",
+    "code": "123456"
 }
 
-### ==================== 2. 登录测试 ====================
+### 1.7 注册 — 空字段（应失败 400）
+POST {{baseUrl}}/register
+Content-Type: {{contentType}}
 
-### 2.1 登录成功
+{
+    "email": "",
+    "password": "",
+    "code": ""
+}
+
+### 1.8 注册 — 邮箱已注册（应失败 400）
+POST {{baseUrl}}/register
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com",
+    "password": "password123",
+    "code": "123456"
+}
+
+# ============================================================
+# 2. 密码登录
+# ============================================================
+
+### 2.1 登录成功（替换真实邮箱、密码、图形验证码 captchaId 和 captchaCode）
+# 响应中自动提取 accessToken 和 refreshToken
 POST {{baseUrl}}/login
 Content-Type: {{contentType}}
 
 {
-    "username": "test_user",
-    "password": "123456"
+    "email": "your_email@163.com",
+    "password": "password123",
+    "captchaId": "替换为 /captcha 返回的 captchaId",
+    "captchaCode": "替换为图片中的验证码"
 }
 
-### 2.2 密码错误（应失败）
+> {%
+    if (response.body.code === 200) {
+        client.global.set("accessToken", response.body.data.accessToken);
+        client.global.set("refreshToken", response.body.data.refreshToken);
+        console.log("✅ accessToken 已捕获");
+        console.log("✅ refreshToken 已捕获");
+    }
+%}
+
+### 2.2 登录 — 密码错误（应失败，统一提示"邮箱或密码错误"）
 POST {{baseUrl}}/login
 Content-Type: {{contentType}}
 
 {
-    "username": "test_user",
-    "password": "wrong_password"
+    "email": "your_email@163.com",
+    "password": "wrong_password",
+    "captchaId": "替换为 captchaId",
+    "captchaCode": "替换为验证码"
 }
 
-### 2.3 用户名不存在（应失败）
+### 2.3 登录 — 用户不存在（应失败，统一提示"邮箱或密码错误"）
 POST {{baseUrl}}/login
 Content-Type: {{contentType}}
 
 {
-    "username": "no_exist_user",
-    "password": "123456"
+    "email": "noexist@example.com",
+    "password": "password123",
+    "captchaId": "替换为 captchaId",
+    "captchaCode": "替换为验证码"
 }
 
-### ==================== 3. 鉴权测试 ====================
+### 2.4 登录 — 空字段（应失败 400）
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
 
-### 3.1 未携带 Token（应拦截）
+{
+    "email": "",
+    "password": "",
+    "captchaId": "",
+    "captchaCode": ""
+}
+
+### 2.5 登录 — 连续 5 次失败锁定（应返回 429）
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com",
+    "password": "wrong_password",
+    "captchaId": "替换为 captchaId",
+    "captchaCode": "替换为验证码"
+}
+
+### 2.6 登录 — 图形验证码错误（应失败）
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com",
+    "password": "password123",
+    "captchaId": "替换为 captchaId",
+    "captchaCode": "WRONG"
+}
+
+# ============================================================
+# 3. Token 刷新
+# ============================================================
+
+### 3.1 刷新 accessToken（使用登录捕获的 refreshToken）
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+
+{
+    "refreshToken": "{{refreshToken}}"
+}
+
+> {%
+    if (response.body.code === 200) {
+        client.global.set("accessToken", response.body.data.accessToken);
+        console.log("✅ accessToken 已刷新");
+    }
+%}
+
+### 3.2 刷新 — refreshToken 为空（应失败 400）
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+
+{
+    "refreshToken": ""
+}
+
+### 3.3 刷新 — 使用 accessToken 替代 refreshToken（应失败 401，强制类型校验）
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+
+{
+    "refreshToken": "{{accessToken}}"
+}
+
+### 3.4 刷新 — 无效 Token（应失败 401）
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+
+{
+    "refreshToken": "invalid_refresh_token_xxxxx"
+}
+
+# ============================================================
+# 4. 受保护端点（需先登录获取 accessToken）
+# ============================================================
+
+### 4.1 鉴权探针 — 携带有效 accessToken（应通过）
+GET {{baseUrl}}/info
+Authorization: {{accessToken}}
+
+### 4.2 鉴权探针 — 未携带 Token（应拦截 401）
 GET {{baseUrl}}/info
 
-### 3.2 携带无效 Token（应拦截）
+### 4.3 鉴权探针 — 无效 Token（应拦截 401）
 GET {{baseUrl}}/info
-Authorization: invalid_token_123456
+Authorization: invalid_token_xxxxx
 
-### 3.3 携带有效 Token（应通过，先登录获取 token 替换下方 xxx）
-GET {{baseUrl}}/info
-Authorization: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0X3VzZXIiLCJpYXQiOjE3Nzk0MTg2NzUsImV4cCI6MTc3OTQyMjI3NX0.P284PbhGo7SnfYoS1Z_0nJc1SBKSV14noMDz1PGYfM8
+### 4.4 获取当前用户信息 — 已登录（应返回 id、email、role、nickname、avatar）
+GET {{baseUrl}}/me
+Authorization: {{accessToken}}
 
-### ==================== 4. 登出测试 ====================
+### 4.5 获取当前用户信息 — 未登录（应返回 401）
+GET {{baseUrl}}/me
 
-### 4.1 登出（使用有效 Token）
+### 4.6 登出 — 有效 Token
 POST {{baseUrl}}/logout
-Authorization: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0X3VzZXIiLCJpYXQiOjE3Nzk0MTg2NzUsImV4cCI6MTc3OTQyMjI3NX0.P284PbhGo7SnfYoS1Z_0nJc1SBKSV14noMDz1PGYfM8
+Authorization: {{accessToken}}
 
-### 4.2 登出后使用原 Token 访问（应拦截）
+> {%
+    if (response.body.code === 200) {
+        client.global.set("accessToken", "");
+        client.global.set("refreshToken", "");
+        console.log("🔒 已登出，Token 已清除");
+    }
+%}
+
+### 4.7 登出 — 无 Token（应失败 400）
+POST {{baseUrl}}/logout
+
+### 4.8 登出后原 Token 访问受保护端点（应拦截 401）
 GET {{baseUrl}}/info
-Authorization: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0X3VzZXIiLCJpYXQiOjE3Nzk0MTg2NzUsImV4cCI6MTc3OTQyMjI3NX0.P284PbhGo7SnfYoS1Z_0nJc1SBKSV14noMDz1PGYfM8
+Authorization: {{accessToken}}
 
-### ==================== 5. 单设备登录测试 ====================
+# ============================================================
+# 5. RBAC 管理员端点（需 admin 角色）
+# ============================================================
 
-### 5.1 第一次登录
-POST {{baseUrl}}/login
+### 5.1 管理员查询用户列表 — 默认分页（page=1, size=10）
+# 必须先以 admin 账号登录，替换 accessToken
+GET {{baseUrl}}/admin/users
+Authorization: {{accessToken}}
+
+### 5.2 管理员查询用户列表 — 自定义分页（page=2, size=5）
+GET {{baseUrl}}/admin/users?page=2&size=5
+Authorization: {{accessToken}}
+
+### 5.3 管理员查询用户列表 — 非 admin 角色（应返回 403 权限不足）
+# 先用普通用户（role=user）登录，然后用其 accessToken 访问
+GET {{baseUrl}}/admin/users
+Authorization: {{accessToken}}
+
+### 5.4 管理员查询用户列表 — 未登录（应拦截 401）
+GET {{baseUrl}}/admin/users
+
+# ============================================================
+# 6. 微信扫码登录流程（需真实微信测试号 + ngrok）
+# ============================================================
+
+### 6.1 生成微信扫码场景（返回 sceneId + authUrl）
+POST {{baseUrl}}/wechat/qrcode
+
+> {%
+    if (response.body.code === 200) {
+        client.global.set("sceneId", response.body.data.sceneId);
+        console.log("📱 sceneId: " + response.body.data.sceneId);
+        console.log("🔗 授权 URL: " + response.body.data.authUrl);
+    }
+%}
+
+### 6.2 轮询扫码状态 — pending（等待扫码）
+GET {{baseUrl}}/wechat/check?sceneId={{sceneId}}
+
+### 6.3 轮询扫码状态 — sceneId 为空（应失败 400）
+GET {{baseUrl}}/wechat/check?sceneId=
+
+### 6.4 轮询扫码状态 — 不存在的 sceneId（应返回 "场景不存在或已过期"）
+GET {{baseUrl}}/wechat/check?sceneId=nonexistent-scene-id
+
+### 6.5 微信 OAuth 回调（需真实微信 code + state，手机浏览器访问）
+# 此端点返回 HTML 而非 JSON，正常流程由微信服务器触发
+GET {{baseUrl}}/wechat/callback?code=REAL_WECHAT_CODE&state={{sceneId}}
+
+### 6.6 发送绑定邮箱验证码
+POST {{baseUrl}}/send-bind-code
 Content-Type: {{contentType}}
 
 {
-    "username": "test_user",
-    "password": "123456"
+    "email": "your_email@163.com"
 }
 
-### 5.2 第二次登录（旧 Token 应失效，用第一次的 Token 访问 /info 应被拦截）
-POST {{baseUrl}}/login
+### 6.7 发送绑定邮箱验证码 — 空邮箱（应失败 400）
+POST {{baseUrl}}/send-bind-code
 Content-Type: {{contentType}}
 
 {
-    "username": "test_user",
-    "password": "123456"
+    "email": ""
 }
+
+### 6.8 微信扫码后绑定邮箱（替换真实 sceneId、邮箱、验证码）
+POST {{baseUrl}}/wechat/bind-email
+Content-Type: {{contentType}}
+
+{
+    "sceneId": "{{sceneId}}",
+    "email": "your_email@163.com",
+    "code": "123456"
+}
+
+> {%
+    if (response.body.code === 200) {
+        client.global.set("accessToken", response.body.data.accessToken);
+        client.global.set("refreshToken", response.body.data.refreshToken);
+        console.log("✅ 微信绑定成功，Token 已捕获");
+    }
+%}
+
+### 6.9 微信扫码后绑定邮箱 — sceneId 缺失（应失败 400）
+POST {{baseUrl}}/wechat/bind-email
+Content-Type: {{contentType}}
+
+{
+    "sceneId": "",
+    "email": "your_email@163.com",
+    "code": "123456"
+}
+
+### 6.10 微信扫码后绑定邮箱 — 验证码错误（应失败 400）
+POST {{baseUrl}}/wechat/bind-email
+Content-Type: {{contentType}}
+
+{
+    "sceneId": "{{sceneId}}",
+    "email": "your_email@163.com",
+    "code": "000000"
+}
+
+# ============================================================
+# 7. 邮箱找回密码流程
+# ============================================================
+
+### 7.1 发送密码重置验证码（仅已注册邮箱）
+POST {{baseUrl}}/forgot-password/send-code
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com"
+}
+
+### 7.2 发送密码重置验证码 — 空邮箱（应失败 400）
+POST {{baseUrl}}/forgot-password/send-code
+Content-Type: {{contentType}}
+
+{
+    "email": ""
+}
+
+### 7.3 发送密码重置验证码 — 未注册邮箱（应失败 400）
+POST {{baseUrl}}/forgot-password/send-code
+Content-Type: {{contentType}}
+
+{
+    "email": "unregistered@example.com"
+}
+
+### 7.4 重置密码（替换真实邮箱、新密码、验证码）
+# 重置成功后所有设备 Token 失效，需重新登录
+POST {{baseUrl}}/forgot-password/reset
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com",
+    "password": "newPassword123",
+    "code": "123456"
+}
+
+### 7.5 重置密码 — 密码不足 6 位（应失败 400）
+POST {{baseUrl}}/forgot-password/reset
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com",
+    "password": "12345",
+    "code": "123456"
+}
+
+### 7.6 重置密码 — 验证码错误（应失败 400）
+POST {{baseUrl}}/forgot-password/reset
+Content-Type: {{contentType}}
+
+{
+    "email": "your_email@163.com",
+    "password": "newPassword123",
+    "code": "000000"
+}
+
+### 7.7 重置密码 — 空字段（应失败 400）
+POST {{baseUrl}}/forgot-password/reset
+Content-Type: {{contentType}}
+
+{
+    "email": "",
+    "password": "",
+    "code": ""
+}
+
+### 7.8 重置密码后原 Token 失效验证（用旧 Token 访问受保护端点应 401）
+GET {{baseUrl}}/me
+Authorization: {{accessToken}}
+
+# ============================================================
+# 8. 单设备登录测试（手动流程）
+# ============================================================
+# 步骤:
+#   1. 执行 2.1 登录 → 获得 accessToken_A
+#   2. 执行 4.4 用 accessToken_A 查 me → 应成功
+#   3. 再次执行 2.1 登录（同一账号）→ 获得 accessToken_B
+#   4. 执行 4.1 用 accessToken_A → 应 401（被踢下线）
+#   5. 执行 4.1 用 accessToken_B → 应成功
+# ============================================================
+
+# ============================================================
+# 9. 跨域 / CORS 验证
+# ============================================================
+
+### 9.1 OPTIONS 预检请求
+OPTIONS {{baseUrl}}/login
+Origin: http://localhost:3000
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: Content-Type, Authorization
+
+# ============================================================
+# 10. 全局异常处理验证
+# ============================================================
+
+### 10.1 请求体格式错误（非 JSON）
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+这不是合法的 JSON
+
+### 10.2 不支持的 HTTP 方法（GET 访问 POST 端点）
+GET {{baseUrl}}/login
+
+### 10.3 不存在的端点（应 404 或 Spring Boot 默认错误页）
+GET {{baseUrl}}/nonexistent-endpoint

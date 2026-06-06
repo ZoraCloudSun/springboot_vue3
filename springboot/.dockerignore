@@ -1,0 +1,29 @@
+# Maven 构建产物（在容器中重新构建）
+target/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Git
+.git/
+.gitignore
+
+# 文档
+*.md
+!README.md
+
+# 日志
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code / AI 辅助工具（不影响 Docker 镜像）
+.claude/
+.agents/
+
+# 测试报告
+**/surefire-reports/

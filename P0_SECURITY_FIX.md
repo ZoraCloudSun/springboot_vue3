@@ -336,15 +336,241 @@ public GlobalOpenApiCustomizer globalSecurityCustomizer() {
 
 ---
 
+## P3：Docker 构建失败 — JAR 缺少 Main-Class 清单属性
+
+> 修复日期：2026-06-06
+
+### 问题描述
+
+执行 `docker compose up -d --build` 后，`auth-backend` 容器反复崩溃重启，日志持续输出：
+
+```
+no main manifest attribute, in app.jar
+```
+
+`java -jar app.jar` 无法启动，因为 JAR 的 `MANIFEST.MF` 文件中没有 `Main-Class` 条目，JVM 不知道该执行哪个类的 `main()` 方法。
+
+### 根本原因
+
+**`pom.xml` 缺少 `spring-boot-maven-plugin` 声明。**
+
+Spring Boot 的可执行 fat JAR 并非 Maven 默认行为——普通的 `mvn package` 只会打出包含本项目 `.class` 文件的**瘦 JAR**，不包含依赖、也没有 Spring Boot 启动器。要让 JAR 可执行，必须由 `spring-boot-maven-plugin` 介入：
+
+| 场景 | Maven 行为 | JAR 内容 |
+|------|-----------|---------|
+| 无 plugin | `mvn package` → 普通 JAR | 只有本项目 `.class`，无 `Main-Class` |
+| 有 plugin | `mvn package` → Spring Boot fat JAR | 本项目 + 所有依赖 + `JarLauncher` + `Start-Class` 清单属性 |
+
+`spring-boot-starter-parent` 只提供**插件版本管理**（`<pluginManagement>`），不会自动激活插件——必须在 `<build><plugins>` 中显式声明。
+
+### 修复方案
+
+**1. [`pom.xml`](springboot/pom.xml) — 添加 `spring-boot-maven-plugin`**
+
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+    </plugins>
+</build>
+```
+
+该插件为 JAR 注入 Spring Boot 启动器：
+- `Main-Class: org.springframework.boot.loader.JarLauncher` — 引导 Spring Boot 类加载器
+- `Start-Class: com.zyt.AppStart` — 实际入口类
+
+**2. [`Dockerfile`](springboot/Dockerfile) — 优化 JAR 文件定位**
+
+旧版：
+```dockerfile
+RUN mv target/*.jar app.jar
+```
+
+新版：
+```dockerfile
+RUN find target -maxdepth 1 -name "*.jar" ! -name "*.original" -exec mv {} app.jar \;
+```
+
+`spring-boot-maven-plugin` 打包时除了生成 fat JAR（如 `Springboot_server-1.0-SNAPSHOT.jar`），还会保留原始瘦 JAR 为 `.jar.original` 文件。旧版 `mv target/*.jar app.jar` 在存在多个 `.jar` 文件时行为不确定（可能报错或覆盖错误文件），新版 `find` 命令明确排除 `.original` 文件，只取 fat JAR。
+
+### 修复效果
+
+| 检查项 | 修复前 | 修复后 |
+|--------|--------|--------|
+| `docker compose up -d --build` | ❌ 容器崩溃重启 | ✅ `auth-backend` 正常启动 |
+| `docker logs auth-backend` | `no main manifest attribute` | `Started AppStart in X seconds` |
+| JAR 可执行性 | 普通 JAR（无入口） | Spring Boot fat JAR（完整可执行） |
+
+### 技术要点
+
+- **Parent POM ≠ Plugin 声明**：`spring-boot-starter-parent` 通过 `<pluginManagement>` 统一管理插件版本，避免子模块版本冲突，但**不会自动激活插件**。每个需要该插件的模块（或父子工程的父 POM）必须显式在 `<build><plugins>` 中声明。
+- **Docker 多阶段构建中的通配符陷阱**：`mvn package` 的 `target/` 目录可能包含多个 `.jar` 文件（主 JAR、源码 JAR、original JAR），通配符 `*.jar` 匹配结果取决于 shell 的 glob 展开顺序，不可靠。`find` + 白名单/黑名单过滤是更稳健的做法。
+- **容器无限重启的根因**：`ENTRYPOINT ["java", "-jar", "app.jar"]` 执行失败后进程退出（exit code ≠ 0），Docker 根据默认 `restart: unless-stopped` 策略自动重启，形成崩溃循环。
+
+---
+
+## P4：Docker 部署 — MyBatis 日志噪声 + 邮件发送失败 + 前端误报成功
+
+> 修复日期：2026-06-06
+
+### 问题描述
+
+Docker 部署后出现三个相关联的问题：
+
+1. **`docker logs` 被 MyBatis 调试日志淹没**：日志中出现 `[org.apache.ibatis.session.defaults.DefaultSqlSession@5cdb3421]` 等无意义对象引用，以及每条 SQL 的完整执行信息。
+2. **邮件发送失败但看不到异常原因**：日志只有 `邮件发送失败，收件人: 3376705489@qq.com` 一行，没有异常堆栈，无法定位是认证失败、DNS 解析失败还是 SMTP 连接超时。
+3. **前端提示"验证码已发送"但用户收不到邮件**：用户在注册/找回密码页面看到绿色成功提示，但邮箱里没有任何邮件，体验割裂。
+
+### 根本原因分析
+
+**问题 1 根因**：`application.yml` 中 MyBatis-Plus 配置了 `StdOutImpl` 日志适配器：
+
+```yaml
+# 修复前
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+```
+
+`StdOutImpl` 将**每条 SQL + 参数 + 结果集元数据**通过 `System.out.println()` 直接输出，完全绕过了 Spring Boot 的日志体系（无法通过 `logging.level` 控制），输出的 `DefaultSqlSession@5cdb3421` 是 MyBatis 内部 `toString()` 的结果，对排查问题毫无帮助。
+
+**问题 2 根因**：`EmailUtil.sendResetCode()` 在 P0 修复时被遗漏，仍使用 `e.printStackTrace()` 而非 `log.error()`：
+
+```java
+// sendVerificationCode()（已在 P0 修复）
+} catch (Exception e) {
+    log.error("邮件发送失败，收件人: {}", to, e);  // ✅ 有完整堆栈
+}
+
+// sendResetCode()（遗漏，未修复）
+} catch (Exception e) {
+    e.printStackTrace();  // ❌ 只有一行消息，没有异常原因
+}
+```
+
+`printStackTrace()` 输出到 `System.err`，在 Docker 日志收集系统中没有时间戳、日志级别、线程名等结构化信息，且无法被 ELK/Splunk 等日志系统检索。
+
+**问题 3 根因**：邮件发送是异步的（`new Thread().start()`），HTTP 响应在邮件线程执行前就返回了：
+
+```
+时间线：
+t0 → HTTP 请求进入 → 校验 → 保存验证码到 Redis
+t1 → return ResponseUtil(200, "验证码已发送至邮箱", ...)  ← 前端收到成功
+t2 → 新线程启动 → 连接 SMTP → 认证失败 → log.error()     ← 用户看不到
+
+.SMTP 认证失败的真实原因：.env 中 MAIL_USERNAME / MAIL_PASSWORD 为空
+→ spring.mail.username = "" → JavaMailSender 无法通过 163.com SMTP 认证
+→ 异步线程静默失败（修复前甚至没有 log.error）
+```
+
+**关键认知**：异步发送邮件**不是 bug**——SMTP 连接可能耗时 3-10 秒，同步等待会让 HTTP 超时，前端直接报"网络错误"。业界标准做法就是"先保存验证码到 Redis → 立即返回成功 → 异步发邮件 → 失败则记录日志"。真正的 bug 是：(a) 失败没有被正确记录，(b) 没有在启动时告知运维人员邮件凭据缺失。
+
+### 修复方案
+
+**1. [`application.yml`](springboot/src/main/resources/application.yml) — MyBatis 日志切换为 Slf4j**
+
+```yaml
+# 修复后
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl  # 纳入 Spring Boot 日志体系
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    "[com.zyt.mapper]": WARN    # 生产环境关闭 SQL 日志
+    root: INFO
+```
+
+切换效果：
+- `DefaultSqlSession@5cdb3421` 等调试信息不再出现在 `docker logs` 中
+- 开发时如需查看 SQL，只需将 `com.zyt.mapper` 日志级别改为 `DEBUG`
+- SQL 日志纳入 Spring Boot 日志体系，有统一的时间戳和日志级别前缀
+
+**2. [`EmailUtil.java`](springboot/src/main/java/com/zyt/utils/EmailUtil.java) — 两处修复**
+
+修复 A：`sendResetCode()` 的 `e.printStackTrace()` → `log.error("邮件发送失败，收件人: {}", to, e)`
+
+修复 B：新增 `@PostConstruct` 启动检查方法：
+
+```java
+@PostConstruct
+public void checkMailConfig() {
+    if (from == null || from.isBlank()) {
+        log.warn("================================================");
+        log.warn("⚠ 邮件凭据未配置！");
+        log.warn("  注册验证码、密码重置等邮件功能将不可用。");
+        log.warn("  配置方法：在 .env 文件中设置 MAIL_USERNAME 和 MAIL_PASSWORD");
+        log.warn("  - MAIL_USERNAME: 你的163邮箱地址（如 your@163.com）");
+        log.warn("  - MAIL_PASSWORD: SMTP 授权码（非登录密码，在 mail.163.com 设置中获取）");
+        log.warn("================================================");
+    } else {
+        log.info("邮件服务已配置，发件人: {}", from);
+    }
+}
+```
+
+这样 `docker compose up` 后立即在日志中看到邮件配置状态，不用等到用户触发发送才发现失败。
+
+**3. [`.env`](.env) — 注释增强**
+
+旧版只写"留空则邮件功能不可用"，新版增加了失败后果说明和配置步骤引导。
+
+### 修复效果
+
+| 问题 | 修复前 | 修复后 |
+|------|--------|--------|
+| `docker logs` 噪音 | MyBatis 每 SQL 一行 + `DefaultSqlSession` 引用 | 干净，只有业务日志 |
+| 邮件失败可诊断性 | `邮件发送失败` 无堆栈 | 完整异常堆栈（auth/ DNS/ timeout 一目了然） |
+| 启动时邮件状态 | 静默，不知邮件功能是否可用 | 启动日志明确告知"已配置"或"未配置" |
+| 前端误报成功 | 用户看到成功但收不到邮件 | 仍需配置 SMTP 凭证（见下方部署步骤） |
+
+### 部署步骤：启用邮件功能
+
+要使邮件功能在 Docker 中正常工作，编辑 `.env` 文件：
+
+```bash
+MAIL_USERNAME=your_email@163.com        # 你的 163 邮箱地址
+MAIL_PASSWORD=your_smtp_authorization    # SMTP 授权码（不是登录密码！）
+```
+
+然后重建容器：
+
+```bash
+docker compose up -d --build
+docker logs auth-backend | grep 邮件
+# 应该看到: "邮件服务已配置，发件人: your_email@163.com"
+```
+
+获取 163 SMTP 授权码：登录 [mail.163.com](https://mail.163.com) → 设置 → POP3/SMTP/IMAP → 开启 SMTP 服务 → 按提示发送短信 → 获取授权码。
+
+### 技术要点
+
+- **`StdOutImpl` vs `Slf4jImpl`**：`StdOutImpl` 是 MyBatis 内置的调试适配器，输出到 `System.out`，完全独立于应用日志体系。`Slf4jImpl` 将 MyBatis 日志桥接到 SLF4J，由 Spring Boot 的日志配置（`logging.level`）统一控制。
+- **`@PostConstruct` 在 `@Value` 注入之后执行**：Spring 容器在完成所有依赖注入后调用 `@PostConstruct` 方法，此时 `from` 字段已被 `@Value` 赋值，可以安全读取。
+- **异步邮件失败无法实时反馈给用户**：这是异步架构的固有限制。替代方案（同步发送、消息队列 + WebSocket 推送）都显著增加复杂度，对于本项目规模不划算。业界小型项目的标准做法就是：异步 + 完整日志 + 支持用户重试（60 秒后可重新发送验证码）。
+
+---
+
 ## 累计修改文件汇总
 
-| 文件 | P0-1 | P0-2 | P1 微信 |
-|------|:----:|:----:|:-------:|
-| [`JwtUtil.java`](springboot/src/main/java/com/zyt/utils/JwtUtil.java) | ✅ | — | — |
-| [`UserService.java`](springboot/src/main/java/com/zyt/service/UserService.java) | — | — | ✅ |
-| [`UserServiceImpl.java`](springboot/src/main/java/com/zyt/service/impl/UserServiceImpl.java) | ✅ | ✅ | ✅ |
-| [`UserController.java`](springboot/src/main/java/com/zyt/controller/UserController.java) | — | — | ✅ |
-| [`WebConfig.java`](springboot/src/main/java/com/zyt/config/WebConfig.java) | — | — | ✅ |
-| [`api/user.js`](web/frontend/src/api/user.js) | — | — | ✅ |
-| [`Login.vue`](web/frontend/src/views/Login.vue) | — | — | ✅ |
-| [`package.json`](web/frontend/package.json) | — | — | ✅（新增 qrcode 依赖） |
+| 文件 | P0-1 | P0-2 | P1 微信 | P2 Knife4j | P3 Docker | P4 Docker 运维 |
+|------|:----:|:----:|:-------:|:----------:|:---------:|:-------------:|
+| [`JwtUtil.java`](springboot/src/main/java/com/zyt/utils/JwtUtil.java) | ✅ | — | — | — | — | — |
+| [`UserService.java`](springboot/src/main/java/com/zyt/service/UserService.java) | — | — | ✅ | — | — | — |
+| [`UserServiceImpl.java`](springboot/src/main/java/com/zyt/service/impl/UserServiceImpl.java) | ✅ | ✅ | ✅ | — | — | — |
+| [`UserController.java`](springboot/src/main/java/com/zyt/controller/UserController.java) | — | — | ✅ | ✅ | — | — |
+| [`WebConfig.java`](springboot/src/main/java/com/zyt/config/WebConfig.java) | — | — | ✅ | — | — | — |
+| [`GlobalExceptionHandler.java`](springboot/src/main/java/com/zyt/exception/GlobalExceptionHandler.java) | — | — | — | ✅ | — | — |
+| [`Knife4jConfig.java`](springboot/src/main/java/com/zyt/config/Knife4jConfig.java) | — | — | — | ✅ | — | — |
+| [`api/user.js`](web/frontend/src/api/user.js) | — | — | ✅ | — | — | — |
+| [`Login.vue`](web/frontend/src/views/Login.vue) | — | — | ✅ | — | — | — |
+| [`package.json`](web/frontend/package.json) | — | — | ✅（qrcode） | — | — | — |
+| [`pom.xml`](springboot/pom.xml) | — | — | — | — | ✅（plugin） | — |
+| [`Dockerfile`](springboot/Dockerfile) | — | — | — | — | ✅（find） | — |
+| [`application.yml`](springboot/src/main/resources/application.yml) | — | — | — | — | — | ✅（日志 + MyBatis） |
+| [`EmailUtil.java`](springboot/src/main/java/com/zyt/utils/EmailUtil.java) | — | — | — | — | — | ✅（日志 + 启动检查） |
+| [`.env`](.env) | — | — | — | — | — | ✅（注释增强） |

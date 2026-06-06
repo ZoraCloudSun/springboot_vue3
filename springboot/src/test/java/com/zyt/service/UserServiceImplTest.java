@@ -1,4 +1,4 @@
-package com.zyt.service.impl;
+package com.zyt.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -6,6 +6,7 @@ import com.zyt.config.WechatConfig;
 import com.zyt.entity.User;
 import com.zyt.exception.BadRequestException;
 import com.zyt.mapper.UserMapper;
+import com.zyt.service.impl.UserServiceImpl;
 import com.zyt.utils.EmailUtil;
 import com.zyt.utils.JwtUtil;
 import com.zyt.utils.ResponseUtil;
@@ -35,13 +36,20 @@ import static org.mockito.Mockito.*;
 @DisplayName("UserServiceImpl 服务层测试")
 class UserServiceImplTest {
 
-    @Mock private UserMapper userMapper;
-    @Mock private JwtUtil jwtUtil;
-    @Mock private StringRedisTemplate stringRedisTemplate;
-    @Mock private ValueOperations<String, String> valueOperations;
-    @Mock private EmailUtil emailUtil;
-    @Mock private WechatConfig wechatConfig;
-    @Mock private WechatUtil wechatUtil;
+    @Mock
+    private UserMapper userMapper;
+    @Mock
+    private JwtUtil jwtUtil;
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
+    @Mock
+    private ValueOperations<String, String> valueOperations;
+    @Mock
+    private EmailUtil emailUtil;
+    @Mock
+    private WechatConfig wechatConfig;
+    @Mock
+    private WechatUtil wechatUtil;
 
     // 真实 BCryptPasswordEncoder（无外部依赖，测试更可靠）
     @Spy
@@ -223,7 +231,8 @@ class UserServiceImplTest {
             ResponseUtil r = userService.sendResetCode(TEST_EMAIL);
 
             assertEquals(200, r.getCode());
-            verify(valueOperations).set(startsWith("reset_code:" + TEST_EMAIL), anyString(), eq(5L), eq(TimeUnit.MINUTES));
+            verify(valueOperations).set(startsWith("reset_code:" + TEST_EMAIL), anyString(), eq(5L),
+                    eq(TimeUnit.MINUTES));
             verify(emailUtil).sendResetCode(eq(TEST_EMAIL), anyString());
         }
 

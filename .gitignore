@@ -20,3 +20,6 @@ git相关命令.md
 node_modules/
 dist/
 *.log
+
+### Docker 环境变量（含敏感凭据）###
+.env

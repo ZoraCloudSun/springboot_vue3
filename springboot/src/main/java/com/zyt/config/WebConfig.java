@@ -18,7 +18,7 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         // Knife4j / Swagger 文档路径（无需认证）
         String[] swaggerPaths = {"/doc.html", "/webjars/**", "/v3/api-docs/**",
-                "/swagger-ui/**", "/swagger-resources/**", "/favicon.ico"};
+                "/swagger-ui/**", "/swagger-resources/**", "/favicon.ico", "/actuator/**"};
 
         registry.addInterceptor(loginInterceptor)
                 .addPathPatterns("/**")

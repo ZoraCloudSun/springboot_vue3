@@ -43,6 +43,8 @@
 ```
 ├── springboot/                          # 后端 Spring Boot 工程
 │   ├── pom.xml                          # Maven 配置
+│   ├── Dockerfile                       # 多阶段构建（Maven → JRE）
+│   ├── .dockerignore                    # Docker 构建排除
 │   └── src/main/
 │       ├── java/com/zyt/
 │       │   ├── AppStart.java            # 启动类
@@ -80,7 +82,10 @@
 │       └── resources/
 │           └── application.yml          # 测试环境配置（H2 内存数据库）
 ├── web/frontend/                        # 前端 Vue 3 + Vite 工程
-│   ├── vite.config.js                   # Vite 配置（代理 + 按需导入）
+│   ├── Dockerfile                        # 多阶段构建（Node → Nginx）
+│   ├── .dockerignore                     # Docker 构建排除
+│   ├── nginx.conf                        # Nginx 配置（SPA + API 代理）
+│   ├── vite.config.js                    # Vite 配置（代理 + 按需导入）
 │   ├── package.json                     # 依赖清单
 │   └── src/
 │       ├── main.js                      # 入口
@@ -97,7 +102,9 @@
 │       │   └── index.js                 # 路由配置 + 导航守卫
 │       └── utils/                       # 工具
 │           └── token.js                 # localStorage Token 存取
-├── DB_MIGRATION.sql                     # 数据库迁移脚本（微信字段）
+├── docker-compose.yml                     # Docker 容器编排（5 服务一键启动）
+├── .env                                    # Docker 环境变量（端口、密码、密钥）
+├── DB_MIGRATION.sql                        # 数据库迁移脚本（微信字段）
 ├── P0_SECURITY_FIX.md                   # P0 安全修复文档
 ├── WECHAT_SETUP_GUIDE.md                # 微信扫码登录完整配置指南
 ├── 项目构建教程.md                       # 28 步详细构建教程（含设计原理）
@@ -116,6 +123,7 @@
 | MySQL | 8.x | 用户数据持久化 |
 | Redis | 7.x | Token 缓存 + 验证码 + 登录失败计数 + 微信状态 |
 | Node.js | 18+ | 前端构建 |
+| Docker | — | 一键启动全部服务（可选，替代 JDK/MySQL/Redis/Node 手动安装） |
 | 163邮箱 | — | 发送注册/绑定验证码（免费，需开启 SMTP） |
 | 微信测试号 | — | 微信扫码登录（免费，无需企业资质） |
 | ngrok | — | 本地开发微信回调公网穿透（免费） |
@@ -127,7 +135,35 @@ git clone <repo-url>
 cd Front-end\ and\ back-end\ separation\ project
 ```
 
-### 2. 初始化数据库
+### 2. 一键启动（Docker Compose，推荐）
+
+```bash
+# 构建并启动所有服务（MySQL + Redis + Spring Boot + Nginx）
+docker compose up -d --build
+
+# 查看服务状态
+docker compose ps
+
+# 访问
+# 前端:      http://localhost
+# API 文档:   http://localhost/doc.html
+# 健康检查:   http://localhost:8080/actuator/health
+
+# 可选：数据库管理界面
+docker compose --profile debug up -d     # Adminer → http://localhost:8081
+
+# 停止
+docker compose down
+```
+
+> 首次构建需要下载 Docker 镜像和 Maven 依赖，约 3-5 分钟。后续启动只需 `docker compose up -d`，秒级完成。
+> 详细配置（端口、密码、JWT 密钥等）见 `.env` 文件。如果不需要 Docker，也可以手动启动。
+
+### 3. 手动启动（不使用 Docker）
+
+> 如果你不使用 Docker，请按以下步骤手动启动各个服务。
+
+#### 初始化数据库
 
 ```bash
 # 创建数据库和基础表
@@ -137,7 +173,7 @@ mysql -u root -p < springboot/src/main/resources/init.sql
 mysql -u root -p springboot_zyt < DB_MIGRATION.sql
 ```
 
-### 3. 配置邮箱
+#### 配置邮箱
 
 编辑 `springboot/src/main/resources/application.yml`，填入你的 163 邮箱和 SMTP 授权码：
 
@@ -150,11 +186,11 @@ spring:
 
 > 📖 获取授权码：登录 [mail.163.com](https://mail.163.com) → 设置 → POP3/SMTP/IMAP → 开启 SMTP → 获取授权码
 
-### 4. （可选）配置微信扫码登录
+#### （可选）配置微信扫码登录
 
 详见 [WECHAT_SETUP_GUIDE.md](WECHAT_SETUP_GUIDE.md)。如果暂不需要微信登录，跳过此步骤不影响密码登录功能。
 
-### 5. 启动后端
+#### 启动后端
 
 ```bash
 cd springboot
@@ -165,7 +201,7 @@ mvn spring-boot:run
 mvn test
 ```
 
-### 6. 启动前端
+#### 启动前端
 
 ```bash
 cd web/frontend
@@ -174,14 +210,14 @@ npm run dev
 # → http://localhost:3000
 ```
 
-### 7. 设置管理员（RBAC）
+#### 设置管理员（RBAC）
 
 ```bash
 # 注册一个账号后，用 MySQL 手动将其提升为管理员
 mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email = 'your_admin@example.com';"
 ```
 
-### 8. 开始使用
+#### 开始使用
 
 1. 浏览器访问 `http://localhost:3000`
 2. 点击底部「注册账号」→ 输入邮箱 → 发送验证码 → 注册
@@ -423,7 +459,7 @@ Axios 成功拦截器:
 - [x] 全局异常处理（`@ControllerAdvice`）
 - [x] Swagger / Knife4j 接口文档
 - [x] 单元测试（JUnit 5 + MockMvc）— 171 个测试，8 个测试类，覆盖全链路
-- [ ] Docker 容器化（docker-compose 一键启动）
+- [x] Docker 容器化（docker-compose 一键启动）
 - [ ] GitHub Actions CI/CD
 
 ---

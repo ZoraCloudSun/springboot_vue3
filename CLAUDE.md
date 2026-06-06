@@ -6,6 +6,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
+### Docker Compose (recommended, one-click)
+
+```bash
+# Build and start all services (MySQL + Redis + Spring Boot + Nginx)
+docker compose up -d --build
+
+# Check service status
+docker compose ps
+
+# Access: http://localhost (frontend), http://localhost/doc.html (API docs),
+#         http://localhost:8080/actuator/health (health check)
+
+# Optional: Adminer DB management UI
+docker compose --profile debug up -d   # → http://localhost:8081
+
+# Stop (preserve volumes)
+docker compose down
+
+# Stop and reset (delete DB/Redis data)
+docker compose down -v
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# View logs
+docker compose logs -f backend
+```
+
+### Manual (without Docker)
+
 ```bash
 # Backend (Spring Boot, port 8080)
 cd springboot
@@ -34,7 +64,7 @@ redis-cli
 > GET token:user@example.com
 ```
 
-**Prerequisites**: JDK 21, MySQL 8.x (database: `springboot_zyt`), Redis 7.x (port 6379), Node.js 18+.
+**Prerequisites**: JDK 21, MySQL 8.x (database: `springboot_zyt`), Redis 7.x (port 6379), Node.js 18+. Alternatively, just Docker — no manual prerequisites needed.
 
 **API Documentation**: Knife4j UI at `http://localhost:8080/doc.html` after backend starts. Swagger JSON at `/v3/api-docs`. Knife4j paths are excluded from the interceptor chain in `WebConfig.java`.
 

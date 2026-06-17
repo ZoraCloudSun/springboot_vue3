@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * RAG 文档处理服务实现
@@ -52,6 +53,39 @@ public class RagProcessingServiceImpl implements RagProcessingService {
     /** Apache Tika 实例（线程安全，可复用） */
     private static final Tika TIKA = new Tika();
 
+    /**
+     * 匹配 Emoji 和其他 Unicode 补充平面字符（U+10000 以上）
+     * 这类字符需要 4 字节 UTF-8 编码，部分 Embedding API 不支持
+     */
+    private static final Pattern EMOJI_PATTERN = Pattern.compile(
+            "[\\x{10000}-\\x{10FFFF}\\x{FE00}-\\x{FE0F}\\x{200D}\\x{20E3}\\x{E0020}-\\x{E007F}]");
+
+    /**
+     * 清理文本以适配 Embedding API 的限制
+     * <p>
+     * 处理逻辑：
+     * 1. 移除 emoji 和 Unicode 补充平面字符（部分 API 不支持 4 字节 UTF-8）
+     * 2. 截断超长文本（BGE 模型 512 token 限制，中文约 1.5~2 token/字，安全上限 400 字）
+     * </p>
+     * <p>
+     * 原始文本仍保留在 kb_chunk 表中用于展示，
+     * 仅在调用 Embedding API 时使用清理后的文本。
+     * </p>
+     *
+     * @param text 原始文本
+     * @return 清理后的文本
+     */
+    private String sanitizeForEmbedding(String text) {
+        if (text == null) return null;
+        // 1. 移除 emoji 和补充平面字符，保留 BMP 内的所有字符（包括中文、日韩文等）
+        String cleaned = EMOJI_PATTERN.matcher(text).replaceAll("").trim();
+        // 2. 截断超长文本（BGE 模型 512 token ≈ 300~400 中文字）
+        if (cleaned.length() > 400) {
+            cleaned = cleaned.substring(0, 400);
+        }
+        return cleaned;
+    }
+
     @Resource
     private KbDocumentMapper documentMapper;
 
@@ -67,10 +101,10 @@ public class RagProcessingServiceImpl implements RagProcessingService {
     @Resource
     private SimpleEmbeddingStore embeddingStore;
 
-    @Value("${rag.document.max-chunk-size:800}")
+    @Value("${rag.document.max-chunk-size:300}")
     private int maxChunkSize;
 
-    @Value("${rag.document.max-chunk-overlap:100}")
+    @Value("${rag.document.max-chunk-overlap:50}")
     private int maxChunkOverlap;
 
     /**
@@ -114,7 +148,14 @@ public class RagProcessingServiceImpl implements RagProcessingService {
                 // 批量嵌入并存入向量库
                 for (KbChunk chunk : chunks) {
                     try {
-                        dev.langchain4j.data.embedding.Embedding embedding = embeddingModel.embed(chunk.getContent())
+                        // 清理 emoji 等特殊字符后再发送给 Embedding API
+                        String embedText = sanitizeForEmbedding(chunk.getContent());
+                        if (embedText.isBlank()) {
+                            log.warn("文本块清理后为空，跳过嵌入: doc={}, chunk={}",
+                                    doc.getFilename(), chunk.getChunkIndex());
+                            continue;
+                        }
+                        dev.langchain4j.data.embedding.Embedding embedding = embeddingModel.embed(embedText)
                                 .content();
                         Metadata metadata = new Metadata()
                                 .put("document_id", String.valueOf(doc.getId()))
@@ -192,7 +233,14 @@ public class RagProcessingServiceImpl implements RagProcessingService {
 
                 // 嵌入并存入向量库
                 try {
-                    dev.langchain4j.data.embedding.Embedding embedding = embeddingModel.embed(chunkText).content();
+                    // 清理 emoji 等特殊字符后再发送给 Embedding API（原始文本已存入 kb_chunk）
+                    String embedText = sanitizeForEmbedding(chunkText);
+                    if (embedText.isBlank()) {
+                        log.warn("文本块清理后为空（仅含特殊字符），跳过嵌入: doc={}, chunk={}",
+                                kbDoc.getFilename(), chunkIndex);
+                        continue;
+                    }
+                    dev.langchain4j.data.embedding.Embedding embedding = embeddingModel.embed(embedText).content();
 
                     Metadata metadata = new Metadata()
                             .put("document_id", String.valueOf(documentId))

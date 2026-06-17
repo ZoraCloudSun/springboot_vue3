@@ -293,7 +293,7 @@ RAG Chat → 检索相关块 → 注入System Prompt → SSE 流式输出
 **Key Design Decisions**:
 - **Embedding Model**: `OpenAiEmbeddingModel` (langchain4j-open-ai, same adapter pattern as chat), points to OpenAI-compatible API via `rag.embedding.*` config
 - **Vector Store**: `SimpleEmbeddingStore` — custom in-memory cosine-similarity store (because `InMemoryEmbeddingStore` is not in langchain4j-core 1.15.0). Rebuilt from MySQL `kb_chunk` table on app restart.
-- **Document Processing**: Apache Tika for text extraction (PDF/DOCX/DOC/TXT/MD) + `TextSplitterUtil` recursive splitter (800 char chunks, 100 char overlap)
+- **Document Processing**: Apache Tika for text extraction (PDF/DOCX/DOC/TXT/MD) + `TextSplitterUtil` recursive splitter (300 char chunks, 50 char overlap)
 - **Integration**: Opt-in per conversation — toggle "RAG" switch in chat header, select a knowledge base. Retrieval results injected before the System Prompt security rules.
 - **Two-Level Recycle Bin**: Soft-deleted knowledge bases and documents are moved to a recycle bin, not permanently removed. Supports restore (with automatic re-embedding) and permanent deletion (cleans disk files, vectors, chunks, and DB records).
 
@@ -371,8 +371,8 @@ rag:
   document:
     max-size: 10485760        # 10MB
     upload-dir: ${RAG_UPLOAD_DIR:./uploads/rag}
-    max-chunk-size: 800
-    max-chunk-overlap: 100
+    max-chunk-size: 300
+    max-chunk-overlap: 50
     max-retrieve-results: 5
     min-relevance-score: 0.3
 ```

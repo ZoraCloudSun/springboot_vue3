@@ -233,7 +233,7 @@
     <el-dialog
       v-model="docRecycleBinVisible"
       title="文档回收站"
-      width="90%"
+      width="70%"
       :close-on-click-modal="false"
       @closed="closeDocRecycleBin"
     >

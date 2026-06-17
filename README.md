@@ -91,8 +91,8 @@
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/zoracloudsun/springboot_vue3
-cd springboot_vue3
+git clone https://github.com/zoracloudsun/zora_clous
+cd zora_clous
 ```
 
 ### 2. 配置环境变量
@@ -410,7 +410,7 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 | DELETE | `/rag/knowledge-bases/{kbId}/recycle-bin/{docId}` | 永久删除文档（不可逆） | ✅ |
 | DELETE | `/rag/knowledge-bases/{kbId}/recycle-bin` | 清空文档回收站 | ✅ |
 
-> 📖 在线调试：启动后端后访问 `http://localhost:8080/doc.html`（Knife4j 接口文档，支持在线发送请求）
+> 📖 在线调试：Docker启动后访问 `http://localhost/doc.html`（Knife4j 接口文档，支持在线发送请求）
 
 ---
 

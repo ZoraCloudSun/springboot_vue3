@@ -681,7 +681,7 @@ Spring Boot（multipart.max-file-size 10MB）
 文档上传 200 响应但实际失败，后端日志：
 
 ```
-ERROR --- com.zyt.service.impl.RagServiceImpl  : 创建上传目录失败: /data/uploads/rag
+ERROR --- com.zora.service.impl.RagServiceImpl  : 创建上传目录失败: /data/uploads/rag
 ```
 
 ### 根因分析

@@ -8,7 +8,7 @@
 [![MySQL](https://img.shields.io/badge/MySQL-8.x-blue)](https://www.mysql.com/)
 [![Redis](https://img.shields.io/badge/Redis-7.x-red)](https://redis.io/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![CI](https://github.com/ZoraCloudSun/springboot_vue3/actions/workflows/ci.yml/badge.svg)](https://github.com/ZoraCloudSun/springboot_vue3/actions/workflows/ci.yml)
+[![CI](https://github.com/zoracloudsun/zora_clous/actions/workflows/ci.yml/badge.svg)](https://github.com/zoracloudsun/zora_clous/actions/workflows/ci.yml)
 
 ---
 
@@ -47,7 +47,7 @@
 │   ├── Dockerfile                       # 多阶段构建（Maven → JRE）
 │   ├── .dockerignore                    # Docker 构建排除
 │   └── src/main/
-│       ├── java/com/zyt/
+│       ├── java/com/zora/
 │       │   ├── AppStart.java            # 启动类
 │       │   ├── controller/              # 控制器（11 个 REST 端点）
 │       │   │   └── UserController.java
@@ -74,7 +74,7 @@
 │           ├── application.yml          # 应用配置（含微信凭证）
 │           └── init.sql                 # 数据库初始化
 │   └── src/test/                        # 单元测试（JUnit 5 + Mockito + MockMvc）
-│       ├── java/com/zyt/
+│       ├── java/com/zora/
 │       │   ├── utils/                   # ResponseUtil / CaptchaUtil / JwtUtil（纯 JUnit 5）
 │       │   ├── service/                 # UserServiceImpl（Mockito + @InjectMocks）
 │       │   ├── config/                  # LoginInterceptor / RoleInterceptor（Mockito）

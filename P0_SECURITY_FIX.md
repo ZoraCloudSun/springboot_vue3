@@ -151,8 +151,8 @@ private void recordLoginFail(String email, String failKey) {
 
 | 文件 | 修改内容 |
 |------|----------|
-| [`springboot/src/main/java/com/zyt/utils/JwtUtil.java`](springboot/src/main/java/com/zyt/utils/JwtUtil.java) | 新增 `isRefreshToken()` 和 `isAccessToken()` 方法 |
-| [`springboot/src/main/java/com/zyt/service/impl/UserServiceImpl.java`](springboot/src/main/java/com/zyt/service/impl/UserServiceImpl.java) | 1. `refresh()` 增加 Token 类型校验<br>2. `login()` 增加失败次数限制 + 统一错误提示<br>3. 新增 `recordLoginFail()` 方法<br>4. 新增常量 `LOGIN_FAIL_PREFIX`、`MAX_LOGIN_FAIL_COUNT`、`LOGIN_LOCK_MINUTES` |
+| [`springboot/src/main/java/com/zora/utils/JwtUtil.java`](springboot/src/main/java/com/zora/utils/JwtUtil.java) | 新增 `isRefreshToken()` 和 `isAccessToken()` 方法 |
+| [`springboot/src/main/java/com/zora/service/impl/UserServiceImpl.java`](springboot/src/main/java/com/zora/service/impl/UserServiceImpl.java) | 1. `refresh()` 增加 Token 类型校验<br>2. `login()` 增加失败次数限制 + 统一错误提示<br>3. 新增 `recordLoginFail()` 方法<br>4. 新增常量 `LOGIN_FAIL_PREFIX`、`MAX_LOGIN_FAIL_COUNT`、`LOGIN_LOCK_MINUTES` |
 
 ---
 
@@ -191,10 +191,10 @@ private void recordLoginFail(String email, String failKey) {
 
 | 文件 | 修改内容 |
 |------|----------|
-| [`springboot/src/main/java/com/zyt/service/UserService.java`](springboot/src/main/java/com/zyt/service/UserService.java) | 新增 3 个接口方法签名：`wechatQrcode()`、`wechatCheck()`、`wechatSimulate()` |
-| [`springboot/src/main/java/com/zyt/service/impl/UserServiceImpl.java`](springboot/src/main/java/com/zyt/service/impl/UserServiceImpl.java) | 新增 3 个微信登录方法实现（约 100 行），含完整注释说明真实 OAuth 流程 |
-| [`springboot/src/main/java/com/zyt/controller/UserController.java`](springboot/src/main/java/com/zyt/controller/UserController.java) | 新增 3 个 REST 端点：`POST /user/wechat/qrcode`、`GET /user/wechat/check`、`POST /user/wechat/simulate` |
-| [`springboot/src/main/java/com/zyt/config/WebConfig.java`](springboot/src/main/java/com/zyt/config/WebConfig.java) | 拦截器白名单新增 3 个微信端点 |
+| [`springboot/src/main/java/com/zora/service/UserService.java`](springboot/src/main/java/com/zora/service/UserService.java) | 新增 3 个接口方法签名：`wechatQrcode()`、`wechatCheck()`、`wechatSimulate()` |
+| [`springboot/src/main/java/com/zora/service/impl/UserServiceImpl.java`](springboot/src/main/java/com/zora/service/impl/UserServiceImpl.java) | 新增 3 个微信登录方法实现（约 100 行），含完整注释说明真实 OAuth 流程 |
+| [`springboot/src/main/java/com/zora/controller/UserController.java`](springboot/src/main/java/com/zora/controller/UserController.java) | 新增 3 个 REST 端点：`POST /user/wechat/qrcode`、`GET /user/wechat/check`、`POST /user/wechat/simulate` |
+| [`springboot/src/main/java/com/zora/config/WebConfig.java`](springboot/src/main/java/com/zora/config/WebConfig.java) | 拦截器白名单新增 3 个微信端点 |
 | [`web/frontend/src/api/user.js`](web/frontend/src/api/user.js) | 新增 `getWechatQrcode()`、`checkWechatScan()`、`simulateWechatScan()` |
 | [`web/frontend/src/views/Login.vue`](web/frontend/src/views/Login.vue) | 完全重写微信登录 Tab：二维码渲染 → 状态轮询 → 模拟扫码 → 自动登录 |
 | [`web/frontend/package.json`](web/frontend/package.json) | 新增依赖 `qrcode`（前端二维码库） |
@@ -296,9 +296,9 @@ public class GlobalExceptionHandler {
 
 | 文件 | 修改内容 |
 |------|----------|
-| [`GlobalExceptionHandler.java`](springboot/src/main/java/com/zyt/exception/GlobalExceptionHandler.java) | 添加 `@Hidden` 注解；新增 `NoResourceFoundException` 静默处理（解决 favicon.ico 缺失噪音日志） |
-| [`UserController.java`](springboot/src/main/java/com/zyt/controller/UserController.java) | 移除所有方法级 `@Tag`；合并为单一类级 `@Tag(name = "用户认证")` |
-| [`Knife4jConfig.java`](springboot/src/main/java/com/zyt/config/Knife4jConfig.java) | 新增 `GlobalOpenApiCustomizer` Bean（修复 Authorize 按钮 Token 不注入问题，见下方补充修复） |
+| [`GlobalExceptionHandler.java`](springboot/src/main/java/com/zora/exception/GlobalExceptionHandler.java) | 添加 `@Hidden` 注解；新增 `NoResourceFoundException` 静默处理（解决 favicon.ico 缺失噪音日志） |
+| [`UserController.java`](springboot/src/main/java/com/zora/controller/UserController.java) | 移除所有方法级 `@Tag`；合并为单一类级 `@Tag(name = "用户认证")` |
+| [`Knife4jConfig.java`](springboot/src/main/java/com/zora/config/Knife4jConfig.java) | 新增 `GlobalOpenApiCustomizer` Bean（修复 Authorize 按钮 Token 不注入问题，见下方补充修复） |
 
 ### 补充修复：Authorize 按钮填入 Token 后不生效
 
@@ -380,7 +380,7 @@ Spring Boot 的可执行 fat JAR 并非 Maven 默认行为——普通的 `mvn p
 
 该插件为 JAR 注入 Spring Boot 启动器：
 - `Main-Class: org.springframework.boot.loader.JarLauncher` — 引导 Spring Boot 类加载器
-- `Start-Class: com.zyt.AppStart` — 实际入口类
+- `Start-Class: com.zora.AppStart` — 实际入口类
 
 **2. [`Dockerfile`](springboot/Dockerfile) — 优化 JAR 文件定位**
 
@@ -481,16 +481,16 @@ mybatis-plus:
 
 logging:
   level:
-    "[com.zyt.mapper]": WARN    # 生产环境关闭 SQL 日志
+    "[com.zora.mapper]": WARN    # 生产环境关闭 SQL 日志
     root: INFO
 ```
 
 切换效果：
 - `DefaultSqlSession@5cdb3421` 等调试信息不再出现在 `docker logs` 中
-- 开发时如需查看 SQL，只需将 `com.zyt.mapper` 日志级别改为 `DEBUG`
+- 开发时如需查看 SQL，只需将 `com.zora.mapper` 日志级别改为 `DEBUG`
 - SQL 日志纳入 Spring Boot 日志体系，有统一的时间戳和日志级别前缀
 
-**2. [`EmailUtil.java`](springboot/src/main/java/com/zyt/utils/EmailUtil.java) — 两处修复**
+**2. [`EmailUtil.java`](springboot/src/main/java/com/zora/utils/EmailUtil.java) — 两处修复**
 
 修复 A：`sendResetCode()` 的 `e.printStackTrace()` → `log.error("邮件发送失败，收件人: {}", to, e)`
 
@@ -559,18 +559,18 @@ docker logs auth-backend | grep 邮件
 
 | 文件 | P0-1 | P0-2 | P1 微信 | P2 Knife4j | P3 Docker | P4 Docker 运维 |
 |------|:----:|:----:|:-------:|:----------:|:---------:|:-------------:|
-| [`JwtUtil.java`](springboot/src/main/java/com/zyt/utils/JwtUtil.java) | ✅ | — | — | — | — | — |
-| [`UserService.java`](springboot/src/main/java/com/zyt/service/UserService.java) | — | — | ✅ | — | — | — |
-| [`UserServiceImpl.java`](springboot/src/main/java/com/zyt/service/impl/UserServiceImpl.java) | ✅ | ✅ | ✅ | — | — | — |
-| [`UserController.java`](springboot/src/main/java/com/zyt/controller/UserController.java) | — | — | ✅ | ✅ | — | — |
-| [`WebConfig.java`](springboot/src/main/java/com/zyt/config/WebConfig.java) | — | — | ✅ | — | — | — |
-| [`GlobalExceptionHandler.java`](springboot/src/main/java/com/zyt/exception/GlobalExceptionHandler.java) | — | — | — | ✅ | — | — |
-| [`Knife4jConfig.java`](springboot/src/main/java/com/zyt/config/Knife4jConfig.java) | — | — | — | ✅ | — | — |
+| [`JwtUtil.java`](springboot/src/main/java/com/zora/utils/JwtUtil.java) | ✅ | — | — | — | — | — |
+| [`UserService.java`](springboot/src/main/java/com/zora/service/UserService.java) | — | — | ✅ | — | — | — |
+| [`UserServiceImpl.java`](springboot/src/main/java/com/zora/service/impl/UserServiceImpl.java) | ✅ | ✅ | ✅ | — | — | — |
+| [`UserController.java`](springboot/src/main/java/com/zora/controller/UserController.java) | — | — | ✅ | ✅ | — | — |
+| [`WebConfig.java`](springboot/src/main/java/com/zora/config/WebConfig.java) | — | — | ✅ | — | — | — |
+| [`GlobalExceptionHandler.java`](springboot/src/main/java/com/zora/exception/GlobalExceptionHandler.java) | — | — | — | ✅ | — | — |
+| [`Knife4jConfig.java`](springboot/src/main/java/com/zora/config/Knife4jConfig.java) | — | — | — | ✅ | — | — |
 | [`api/user.js`](web/frontend/src/api/user.js) | — | — | ✅ | — | — | — |
 | [`Login.vue`](web/frontend/src/views/Login.vue) | — | — | ✅ | — | — | — |
 | [`package.json`](web/frontend/package.json) | — | — | ✅（qrcode） | — | — | — |
 | [`pom.xml`](springboot/pom.xml) | — | — | — | — | ✅（plugin） | — |
 | [`Dockerfile`](springboot/Dockerfile) | — | — | — | — | ✅（find） | — |
 | [`application.yml`](springboot/src/main/resources/application.yml) | — | — | — | — | — | ✅（日志 + MyBatis） |
-| [`EmailUtil.java`](springboot/src/main/java/com/zyt/utils/EmailUtil.java) | — | — | — | — | — | ✅（日志 + 启动检查） |
+| [`EmailUtil.java`](springboot/src/main/java/com/zora/utils/EmailUtil.java) | — | — | — | — | — | ✅（日志 + 启动检查） |
 | [`.env`](.env) | — | — | — | — | — | ✅（注释增强） |

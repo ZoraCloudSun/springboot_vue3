@@ -11,7 +11,7 @@
 [![LangChain4j](https://img.shields.io/badge/LangChain4j-1.15.0-00B265)](https://docs.langchain4j.dev/)
 [![DeepSeek](https://img.shields.io/badge/DeepSeek-V3-536DFE)](https://platform.deepseek.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![CI](https://github.com/ZoraCloudSun/springboot_vue3/actions/workflows/ci.yml/badge.svg)](https://github.com/ZoraCloudSun/springboot_vue3/actions/workflows/ci.yml)
+[![CI](https://github.com/zoracloudsun/zora_clous/actions/workflows/ci.yml/badge.svg)](https://github.com/zoracloudsun/zora_clous/actions/workflows/ci.yml)
 
 ---
 
@@ -91,7 +91,7 @@
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/ZoraCloudSun/springboot_vue3
+git clone https://github.com/zoracloudsun/springboot_vue3
 cd springboot_vue3
 ```
 
@@ -222,7 +222,7 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 │   ├── Dockerfile                           # 多阶段构建（Maven → JRE）
 │   └── src/
 │       ├── main/
-│       │   ├── java/com/zyt/
+│       │   ├── java/com/zora/
 │       │   │   ├── AppStart.java            # 启动类（@MapperScan + @EnableScheduling）
 │       │   │   ├── config/                  # 配置类（12 个）
 │       │   │   │   ├── AiConfig.java        # LangChain4j 流式模型 + Embedding 配置
@@ -293,7 +293,7 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 │       └── test/                            # 单元测试（212 个，JUnit 5 + Mockito + MockMvc）
 │           ├── resources/
 │           │   └── application.yml          # 测试配置（H2 + 占位凭证）
-│           └── java/com/zyt/
+│           └── java/com/zora/
 │               ├── utils/                   # 工具类测试（3 个）
 │               │   ├── ResponseUtilTest.java
 │               │   ├── CaptchaUtilTest.java

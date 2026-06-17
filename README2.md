@@ -265,7 +265,7 @@ chat_message(id, conversation_id → chat_conversation.id, role, content, create
 
 ```
 springboot/
-├── src/main/java/com/zyt/
+├── src/main/java/com/zora/
 │   ├── config/
 │   │   ├── AiConfig.java              # LangChain4j 流式模型配置
 │   │   ├── RagConfig.java             # Embedding 模型 + 向量存储配置

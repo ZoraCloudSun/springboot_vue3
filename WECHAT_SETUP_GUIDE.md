@@ -265,10 +265,10 @@ ngrok http 8080
 
 | 文件 | 职责 |
 |------|------|
-| [WechatConfig.java](springboot/src/main/java/com/zyt/config/WechatConfig.java) | 微信配置类：appId、appSecret、callbackUrl + API 端点常量 |
-| [WechatUtil.java](springboot/src/main/java/com/zyt/utils/WechatUtil.java) | 微信 API 工具：code→access_token→用户信息 |
-| [UserServiceImpl.java](springboot/src/main/java/com/zyt/service/impl/UserServiceImpl.java) | 微信登录业务逻辑：qrcode/check/callback/bindEmail |
-| [UserController.java](springboot/src/main/java/com/zyt/controller/UserController.java) | 微信 REST 端点：qrcode/check/callback/bind-email/send-bind-code |
+| [WechatConfig.java](springboot/src/main/java/com/zora/config/WechatConfig.java) | 微信配置类：appId、appSecret、callbackUrl + API 端点常量 |
+| [WechatUtil.java](springboot/src/main/java/com/zora/utils/WechatUtil.java) | 微信 API 工具：code→access_token→用户信息 |
+| [UserServiceImpl.java](springboot/src/main/java/com/zora/service/impl/UserServiceImpl.java) | 微信登录业务逻辑：qrcode/check/callback/bindEmail |
+| [UserController.java](springboot/src/main/java/com/zora/controller/UserController.java) | 微信 REST 端点：qrcode/check/callback/bind-email/send-bind-code |
 | [Login.vue](web/frontend/src/views/Login.vue) | 前端页面：四状态 UI + 邮箱绑定表单 + 轮询 |
 | [user.js](web/frontend/src/api/user.js) | 前端 API：getWechatQrcode/checkWechatScan/sendBindCode/bindWechatEmail |
 | [application.yml](springboot/src/main/resources/application.yml) | 微信凭证配置 |

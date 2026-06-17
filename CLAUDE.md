@@ -84,7 +84,7 @@ redis-cli
 ## Project Structure (Quick Reference)
 
 ```
-springboot/src/main/java/com/zyt/
+springboot/src/main/java/com/zora/
 ├── AppStart.java                          # 启动类
 ├── config/                                # 配置类（12 个）
 │   ├── AiConfig.java                      #   LangChain4j 流式模型 + Embedding
@@ -135,7 +135,7 @@ web/frontend/src/
 ├── router/index.js                        # 路由 + 导航守卫
 └── utils/token.js                         # localStorage 双 Token 存取
 
-springboot/src/test/java/com/zyt/          # 单元测试（212 个）
+springboot/src/test/java/com/zora/          # 单元测试（212 个）
 ├── utils/         ResponseUtilTest, CaptchaUtilTest, JwtUtilTest
 ├── service/       UserServiceImplTest, RagServiceImplTest, EmbeddingDebugTest
 ├── config/        LoginInterceptorTest, RoleInterceptorTest, SwaggerCompatControllerTest
@@ -218,7 +218,7 @@ Controller  →  Service (interface)  →  ServiceImpl  →  Mapper (MyBatis-Plu
 
 **Global exception handling** via `@RestControllerAdvice` (`GlobalExceptionHandler.java`). Exceptions thrown from controllers/services are caught and converted to `ResponseUtil` JSON — no more manual `return new ResponseUtil(code, msg, null)` for error paths.
 
-**Exception hierarchy** (`com.zyt.exception`):
+**Exception hierarchy** (`com.zora.exception`):
 - `BusinessException(code, msg)` — base class, carries HTTP status code
 - `BadRequestException(msg)` → 400 — validation / business rule failures
 - `UnauthorizedException(msg)` → 401 — auth failures

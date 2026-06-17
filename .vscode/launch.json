@@ -1,12 +1,31 @@
 {
     "configurations": [
-        
         {
             "type": "java",
             "name": "Spring Boot-AppStart<Springboot_server>",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "mainClass": "com.zyt.AppStart",
+            "mainClass": "com.zora.AppStart",
+            "projectName": "Springboot_server",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-AppStart<Springboot_server>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.zora.AppStart",
+            "projectName": "Springboot_server",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-AppStart<Springboot_server>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.zora.AppStart",
             "projectName": "Springboot_server",
             "args": "",
             "envFile": "${workspaceFolder}/.env"

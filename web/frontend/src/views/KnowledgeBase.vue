@@ -132,7 +132,7 @@
             <el-table-column prop="fileSize" label="大小" width="90" align="center">
               <template #default="{ row }">{{ formatFileSize(row.fileSize) }}</template>
             </el-table-column>
-            <el-table-column prop="status" label="状态" width="50" align="center">
+            <el-table-column prop="status" label="状态" width="100" align="center">
               <template #default="{ row }">
                 <el-tooltip
                   v-if="row.status === 'FAILED' && row.errorMessage"
@@ -286,7 +286,7 @@ import {
   Collection, Plus, Folder, ArrowDown, ArrowUp,
   Upload, Edit, Delete, Search,
 } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import {
   createKnowledgeBase, listKnowledgeBases, getKnowledgeBase,
   updateKnowledgeBase, deleteKnowledgeBase,
@@ -479,14 +479,15 @@ async function refreshProcessingDocs() {
   await loadDocuments(kbId)
   await loadKnowledgeBases()
 
-  // 检测刚变为 FAILED 的文档，弹出通知
+  // 检测刚变为 FAILED 的文档，弹出通知（ElNotification 标题+正文分离，长消息也不拥挤）
   const newDocs = documents.value[kbId] || []
   newDocs.forEach(d => {
     if (d.status === 'FAILED' && prevStatusMap[d.id] && prevStatusMap[d.id] !== 'FAILED') {
-      ElMessage.error({
-        message: `文档处理失败：${d.filename} —— ${d.errorMessage || '未知错误'}`,
+      ElNotification({
+        title: `文档处理失败：${d.filename}`,
+        message: d.errorMessage || '未知错误',
+        type: 'error',
         duration: 8000,
-        showClose: true,
       })
     }
   })

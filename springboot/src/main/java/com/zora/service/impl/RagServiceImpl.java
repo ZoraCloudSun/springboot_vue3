@@ -226,20 +226,21 @@ public class RagServiceImpl implements RagService {
         long fileSize = file.getSize();
         FileTypeUtil.checkFileSize(fileSize, maxFileSize);
 
-        // 5. 确保上传目录存在
+        // 5. 确保上传目录存在（转为绝对路径，防止 Tomcat 内部相对路径解析不一致导致
+        //    目录创建在一处、文件写入到另一处的问题）
+        Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
         try {
-            Path uploadPath = Paths.get(uploadDir);
             if (!Files.exists(uploadPath)) {
                 Files.createDirectories(uploadPath);
             }
         } catch (IOException e) {
-            log.error("创建上传目录失败: {}", uploadDir, e);
+            log.error("创建上传目录失败: {}", uploadPath, e);
             throw new BadRequestException("文件上传失败，请联系管理员");
         }
 
         // 6. 保存文件到磁盘（文件名加时间戳防止冲突）
         String storedFilename = System.currentTimeMillis() + "_" + originalFilename;
-        Path destPath = Paths.get(uploadDir, storedFilename);
+        Path destPath = uploadPath.resolve(storedFilename);
         try {
             file.transferTo(destPath.toFile());
             log.info("文件已保存: {}", destPath);

@@ -15,7 +15,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-### Docker Compose (recommended, one-click)
+### Development Mode (hot reload — recommended for daily coding)
+
+Infrastructure (MySQL + Redis) runs in Docker; backend and frontend run on the host machine with live reload.
+
+```bash
+# 1. Start infrastructure only (MySQL + Redis)
+docker compose up -d mysql redis
+
+# 2. Backend: run AppStart.java in IDEA (or `mvn spring-boot:run`)
+#    With spring-boot-devtools on classpath, save → auto-restart (~3s).
+#    IDEA settings required:
+#    Settings → Build → Compiler → ☑ Build project automatically
+#    Ctrl+Shift+Alt+/ → Registry → ☑ compiler.automake.allow.when.app.running
+cd springboot
+mvn spring-boot:run          # Terminal alternative to IDEA
+
+# 3. Frontend: Vite dev server with HMR (hot module replacement)
+cd web/frontend
+npm run dev                  # → http://localhost:3000
+#    API requests (/user, /ai, /rag) are proxied to localhost:8080 via vite.config.js
+
+# 4. Access
+#    Frontend: http://localhost:3000 (Vite HMR — instant browser update on save)
+#    API docs: http://localhost:3000/doc.html (proxied to backend)
+#    Backend:  http://localhost:8080
+#    MySQL:    localhost:13306  (port from docker-compose)
+#    Redis:    localhost:6379
+
+# Run tests
+cd springboot && mvn test        # 212 tests, ~10s
+```
+
+**How hot reload works**:
+
+| Component | Tool | Behavior |
+| --------- | ---- | -------- |
+| Backend Java | spring-boot-devtools | Save file → Spring auto-restarts (2-3s). Fat JAR runtime auto-disables devtools. |
+| Frontend Vue | Vite HMR | Save file → browser updates in-place (no page reload, no state loss) |
+| MySQL/Redis | Docker | No code changes → start once, keep running |
+
+**When to use Docker Compose full build** (`docker compose up -d --build`):
+
+- Merging a PR / switching branches with dependency changes
+- Verifying production build before deployment
+- First-time setup after cloning
+
+### Docker Compose (full stack, one-click)
 
 ```bash
 # Build and start all services (MySQL + Redis + Spring Boot + Nginx)
@@ -73,7 +119,7 @@ redis-cli
 > GET token:user@example.com
 ```
 
-**Prerequisites**: JDK 21, MySQL 8.x (database: `springboot_zyt`), Redis 7.x (port 6379), Node.js 18+. Alternatively, just Docker — no manual prerequisites needed.
+**Prerequisites for non-Docker**: JDK 21, MySQL 8.x (database: `springboot_zyt`), Redis 7.x (port 6379), Node.js 18+. Alternatively, just Docker — no manual prerequisites needed.
 
 **API Documentation**: Knife4j UI at `http://localhost:8080/doc.html` after backend starts. Swagger JSON at `/v3/api-docs`. Knife4j paths are excluded from the interceptor chain in `WebConfig.java`.
 

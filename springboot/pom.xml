@@ -103,6 +103,14 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Spring Boot DevTools：开发热加载（生产环境通过 fat JAR 运行时自动禁用） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <optional>true</optional>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- ==================== AI 扩展：WebFlux + LangChain4j ==================== -->
         <!-- WebFlux：提供 Flux<String> 支持 SSE 流式响应 -->
         <dependency>

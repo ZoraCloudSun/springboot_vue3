@@ -40,7 +40,9 @@ public class FileTypeUtil {
             return "txt";
         if (lower.endsWith(".md"))
             return "md";
-        throw new BadRequestException("不支持的文件类型，支持：PDF、DOCX、DOC、TXT、MD");
+        throw new BadRequestException(
+            "不支持的文件类型（如 PNG、JPG 等图片格式，以及扫描版 PDF）。"
+            + "当前仅支持文本型文档：PDF、DOCX、DOC、TXT、MD");
     }
 
     /**

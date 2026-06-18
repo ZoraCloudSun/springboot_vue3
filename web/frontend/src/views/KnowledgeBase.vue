@@ -132,9 +132,22 @@
             <el-table-column prop="fileSize" label="大小" width="90" align="center">
               <template #default="{ row }">{{ formatFileSize(row.fileSize) }}</template>
             </el-table-column>
-            <el-table-column prop="status" label="状态" width="100" align="center">
+            <el-table-column prop="status" label="状态" width="50" align="center">
               <template #default="{ row }">
-                <el-tag size="small" :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
+                <el-tooltip
+                  v-if="row.status === 'FAILED' && row.errorMessage"
+                  :content="row.errorMessage"
+                  placement="top"
+                  effect="dark"
+                  :show-after="200"
+                >
+                  <el-tag size="small" :type="statusType(row.status)" class="status-failed-tag">
+                    {{ statusText(row.status) }}
+                  </el-tag>
+                </el-tooltip>
+                <el-tag v-else size="small" :type="statusType(row.status)">
+                  {{ statusText(row.status) }}
+                </el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="chunkCount" label="块数" width="60" align="center" />
@@ -416,7 +429,7 @@ function beforeUpload(file) {
   const ext = file.name.split('.').pop()?.toLowerCase()
   const allowed = ['pdf', 'docx', 'doc', 'txt', 'md']
   if (!allowed.includes(ext)) {
-    ElMessage.error('不支持的文件类型，支持：PDF、DOCX、DOC、TXT、MD')
+    ElMessage.error('不支持的文件类型（如图片格式、扫描版 PDF），当前仅支持文本型文档：PDF、DOCX、DOC、TXT、MD')
     return false
   }
   if (file.size > 10 * 1024 * 1024) {
@@ -449,7 +462,7 @@ async function handleDeleteDoc(kbId, docId) {
   } catch {}
 }
 
-// 轮询刷新：检查是否有处理中的文档，有则刷新
+// 轮询刷新：检查是否有处理中的文档，有则刷新；检测到处理失败时主动通知用户
 async function refreshProcessingDocs() {
   const kbId = expandedKbId.value
   if (!kbId) return
@@ -457,10 +470,26 @@ async function refreshProcessingDocs() {
   const hasProcessing = docs.some(
     d => d.status === 'PENDING' || d.status === 'PROCESSING'
   )
-  if (hasProcessing) {
-    await loadDocuments(kbId)
-    await loadKnowledgeBases()
-  }
+  if (!hasProcessing) return
+
+  // 保存轮询前的状态快照，用于检测新失败
+  const prevStatusMap = {}
+  docs.forEach(d => { prevStatusMap[d.id] = d.status })
+
+  await loadDocuments(kbId)
+  await loadKnowledgeBases()
+
+  // 检测刚变为 FAILED 的文档，弹出通知
+  const newDocs = documents.value[kbId] || []
+  newDocs.forEach(d => {
+    if (d.status === 'FAILED' && prevStatusMap[d.id] && prevStatusMap[d.id] !== 'FAILED') {
+      ElMessage.error({
+        message: `文档处理失败：${d.filename} —— ${d.errorMessage || '未知错误'}`,
+        duration: 8000,
+        showClose: true,
+      })
+    }
+  })
 }
 
 // ==================== 知识库回收站操作 ====================
@@ -771,6 +800,9 @@ function statusText(status) {
 
 /* 空/加载 */
 .kb-empty, .kb-loading { margin-top: 60px; }
+
+/* 失败状态标签：可 hover 查看详情 */
+.status-failed-tag { cursor: help; border-bottom: 1px dashed currentColor; }
 
 /* 回收站 */
 .recycle-badge { margin-left: 4px; }

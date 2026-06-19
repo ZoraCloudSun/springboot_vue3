@@ -127,7 +127,7 @@ AI_EMBEDDING_MODEL=bge-large-zh-v1.5
 > - 硅基流动（Embedding）：[siliconflow.cn](https://siliconflow.cn)（国内直连，推荐）
 > - 不配置 Embedding API 不影响普通 AI 对话，但知识库功能不可用
 
-### 3. 一键启动（Docker Compose，推荐）
+### 3. 生产模式：Docker Compose 一键启动
 
 ```bash
 # 构建并启动所有服务（MySQL + Redis + Spring Boot + Nginx）
@@ -153,7 +153,127 @@ docker compose down -v
 
 > 首次构建需要下载 Docker 镜像和 Maven 依赖，约 3-5 分钟。后续启动只需 `docker compose up -d`，秒级完成。
 
-### 4. 手动启动（开发模式）
+### 4. 开发模式：Docker + 本地热加载（推荐日常开发）
+
+基础设施（MySQL + Redis）运行在 Docker 中，后端和前端在宿主机运行，支持**修改代码即生效**的热加载体验。
+
+<details>
+<summary>点击展开详细步骤</summary>
+
+#### 4.1 启动 Docker 基础设施
+
+```bash
+# 只启动 MySQL 和 Redis（不启动 backend 和 frontend 容器）
+docker compose up -d mysql redis
+```
+
+验证基础设施就绪：
+
+```bash
+docker compose ps
+# auth-mysql   Up XX minutes (healthy)   0.0.0.0:13307->3306/tcp
+# auth-redis   Up XX minutes (healthy)   0.0.0.0:6379->6379/tcp
+```
+
+#### 4.2 配置环境变量
+
+**VSCode 用户**（推荐）：项目的 `.vscode/launch.json` 已配置 `"envFile": "${workspaceFolder}/.env"`，使用 `F5` 或 Spring Boot Dashboard 启动即可自动加载 `.env` 中的全部环境变量，无需手动设置。
+
+**终端用户**：在启动前手动导出环境变量：
+
+```bash
+# 数据库（指向 Docker 容器映射端口）
+export MYSQL_HOST=localhost
+export MYSQL_PORT=13307
+export MYSQL_USERNAME=springuser
+export MYSQL_PASSWORD=springpass
+
+# Redis
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
+
+# AI / Embedding API（从 .env 复制）
+export AI_API_KEY=sk-your-deepseek-key
+export AI_BASE_URL=https://api.deepseek.com/v1
+export AI_MODEL_NAME=deepseek-chat
+export AI_EMBEDDING_API_KEY=sk-your-embedding-key
+export AI_EMBEDDING_BASE_URL=https://api.siliconflow.cn/v1
+export AI_EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
+```
+
+> ⚠️ **常见坑**：终端直接 `mvn spring-boot:run` 不会加载 `.env`。如果忘记 export 环境变量，后端会回退到 `application.yml` 默认值（`localhost:3306`），可能连到本地老 MySQL 实例导致 RAG 表不存在的错误。各变量的正确值请参考项目根目录的 `.env` 文件，或查阅 [FIX_Document/Windows_Reserved_Port_8080_FIX.md](FIX_Document/Windows_Reserved_Port_8080_FIX.md#环境变量速查表)。
+
+#### 4.3 启动后端（热加载）
+
+```bash
+cd springboot
+mvn spring-boot:run
+# → http://localhost:8080
+```
+
+后端依赖 `spring-boot-devtools`，保存代码后 Spring Boot 自动重启（~3 秒），无需手动重启。
+
+> **VSCode 用户提示**：打开 `AppStart.java`，点击编辑器右上角的 ▶️ 运行按钮，或按 `F5`，启动时会自动加载 `.env`。
+
+#### 4.4 启动前端（热模块替换 HMR）
+
+```bash
+cd web/frontend
+npm install        # 首次运行需要
+npm run dev
+# → http://localhost:3000
+```
+
+前端使用 Vite HMR，保存文件后浏览器**原地更新组件**（不刷新页面、不丢失状态）。API 请求通过 Vite 代理转发到 `localhost:8080`。
+
+#### 4.5 热加载原理
+
+| 组件 | 工具 | 行为 |
+| --- | --- | --- |
+| 后端 Java | spring-boot-devtools | 保存文件 → Spring 自动重启（2-3s），Fat JAR 运行时自动禁用 |
+| 前端 Vue | Vite HMR | 保存文件 → 浏览器原地更新组件（无页面刷新、无状态丢失） |
+| MySQL/Redis | Docker | 无代码变更 → 启动一次，保持运行 |
+
+#### 4.6 运行测试
+
+```bash
+cd springboot
+mvn test   # 212 个测试，~10 秒
+```
+
+#### 4.7 设置管理员
+
+```bash
+docker exec auth-mysql mysql -u root -proot123 springboot_zyt \
+  -e "UPDATE user SET role = 'admin' WHERE email = 'your_admin@example.com';"
+```
+
+#### 4.8 Windows 端口 8080 被占用？
+
+Windows 系统有时会将 8080 纳入保留端口范围（通常由 WinNAT / Docker / Hyper-V 触发），导致 `java.net.BindException: Address already in use`，但 `netstat` 查不到任何进程。
+
+**诊断**：
+
+```cmd
+netsh interface ipv4 show excludedportrange protocol=tcp
+```
+
+如果 `8080` 落在输出的区间内，则被 Windows 系统保留。
+
+**修复**（管理员 CMD）：
+
+```cmd
+net stop winnat
+net start winnat
+```
+
+详细分析见 [Windows_Reserved_Port_8080_FIX.md](FIX_Document/Windows_Reserved_Port_8080_FIX.md)。
+
+</details>
+
+### 5. 手动启动（纯本地，不使用 Docker）
+
+如果不想依赖 Docker，可以手动安装 MySQL 和 Redis 后按以下步骤启动：
 
 <details>
 <summary>点击展开手动启动步骤</summary>
@@ -204,7 +324,7 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 
 </details>
 
-### 5. 开始使用
+### 6. 开始使用
 
 1. 访问 `http://localhost:3000`（或 `http://localhost` Docker 模式）
 2. **注册**：点击「注册账号」→ 输入邮箱 → 发送验证码 → 设置密码
@@ -342,11 +462,14 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 ├── docker-compose.yml                       # Docker 容器编排（MySQL + Redis + Backend + Nginx）
 ├── .env                                     # 环境变量（数据库密码、JWT 密钥、API Key）
 ├── CLAUDE.md                                # 项目架构与开发规范（Claude Code 指南）
-├── P0_SECURITY_FIX.md                       # P0 安全修复文档（Token 类型校验 + 暴力破解防护）
-├── P1_SECURITY_FIX.md                       # P1 安全修复文档
-├── WECHAT_SETUP_GUIDE.md                    # 微信扫码登录完整配置指南
-├── 项目构建教程1.md                          # 用户认证系统 28 步构建教程
-├── 项目构建教程2.md                          # AI 对话 + RAG 知识库详细实现
+├── FIX_Document/                             # 问题修复文档
+│   ├── P0_SECURITY_FIX.md                   # P0 安全修复（Token 类型校验 + 暴力破解防护）
+│   ├── P1_SECURITY_FIX.md                   # P1 安全修复
+│   └── Windows_Reserved_Port_8080_FIX.md    # Windows 保留端口 8080 排查修复
+├── Project Detail Guide/                     # 项目构建详细指南
+│   ├── WECHAT_SETUP_GUIDE.md                # 微信扫码登录完整配置指南
+│   ├── 项目构建教程1.md                      # 用户认证系统 28 步构建教程
+│   └── 项目构建教程2.md                      # AI 对话 + RAG 知识库详细实现
 ├── README1.md                               # README 历史版本
 └── README2.md                               # README 历史版本
 ```
@@ -677,11 +800,12 @@ AI_MODEL_NAME=your-model-name
 | 文档 | 说明 |
 |------|------|
 | [CLAUDE.md](CLAUDE.md) | 项目架构与开发规范（含 RAG 完整文档） |
-| [项目构建教程.md](项目构建教程.md) | 用户认证系统 28 步完整构建过程 |
-| [项目构建教程2.md](项目构建教程2.md) | AI 智能对话 + RAG 知识库详细实现 |
-| [WECHAT_SETUP_GUIDE.md](WECHAT_SETUP_GUIDE.md) | 微信扫码登录完整配置指南 |
-| [P0_SECURITY_FIX.md](P0_SECURITY_FIX.md) | P0 安全修复记录：Token 类型校验 + 暴力破解防护 |
-| [P1_SECURITY_FIX.md](P1_SECURITY_FIX.md) | P1 安全修复记录 |
+| [项目构建教程1.md](Project%20Detail%20Guide/项目构建教程1.md) | 用户认证系统 28 步完整构建过程 |
+| [项目构建教程2.md](Project%20Detail%20Guide/项目构建教程2.md) | AI 智能对话 + RAG 知识库详细实现 |
+| [WECHAT_SETUP_GUIDE.md](Project%20Detail%20Guide/WECHAT_SETUP_GUIDE.md) | 微信扫码登录完整配置指南 |
+| [P0_SECURITY_FIX.md](FIX_Document/P0_SECURITY_FIX.md) | P0 安全修复记录：Token 类型校验 + 暴力破解防护 |
+| [P1_SECURITY_FIX.md](FIX_Document/P1_SECURITY_FIX.md) | P1 安全修复记录 |
+| [Windows_Reserved_Port_8080_FIX.md](FIX_Document/Windows_Reserved_Port_8080_FIX.md) | Windows 保留端口 8080 排查修复 |
 | [DB_MIGRATION.sql](DB_MIGRATION.sql) | 数据库迁移脚本 |
 
 ---

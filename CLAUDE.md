@@ -123,7 +123,7 @@ redis-cli
 
 **API Documentation**: Knife4j UI at `http://localhost:8080/doc.html` after backend starts. Swagger JSON at `/v3/api-docs`. Knife4j paths are excluded from the interceptor chain in `WebConfig.java`.
 
-⚠️ **Knife4j + Spring Boot 3.5.x compatibility**: `GlobalExceptionHandler` has `@Hidden` annotation to prevent SpringDoc from scanning it — this avoids a `NoSuchMethodError` caused by `ControllerAdviceBean` constructor signature change in Spring Framework 6.2. Also, `Knife4jConfig` has a `GlobalOpenApiCustomizer` bean that injects `SecurityRequirement` into every Operation — Knife4j does not auto-inherit the global security declaration, so this customizer is mandatory for the Authorize button to work. If upgrading Knife4j to a version that natively supports Spring Boot 3.5+, remove both workarounds. See `P0_SECURITY_FIX.md#P2` for details.
+⚠️ **Knife4j + Spring Boot 3.5.x compatibility**: `GlobalExceptionHandler` has `@Hidden` annotation to prevent SpringDoc from scanning it — this avoids a `NoSuchMethodError` caused by `ControllerAdviceBean` constructor signature change in Spring Framework 6.2. Also, `Knife4jConfig` has a `GlobalOpenApiCustomizer` bean that injects `SecurityRequirement` into every Operation — Knife4j does not auto-inherit the global security declaration, so this customizer is mandatory for the Authorize button to work. If upgrading Knife4j to a version that natively supports Spring Boot 3.5+, remove both workarounds. See `FIX_Document/P0_SECURITY_FIX.md#P2` for details.
 
 ---
 

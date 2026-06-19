@@ -76,7 +76,8 @@ public class RagProcessingServiceImpl implements RagProcessingService {
      * @return 清理后的文本
      */
     private String sanitizeForEmbedding(String text) {
-        if (text == null) return null;
+        if (text == null)
+            return null;
         // 1. 移除 emoji 和补充平面字符，保留 BMP 内的所有字符（包括中文、日韩文等）
         String cleaned = EMOJI_PATTERN.matcher(text).replaceAll("").trim();
         // 2. 截断超长文本（BGE 模型 512 token ≈ 300~400 中文字）
@@ -212,12 +213,7 @@ public class RagProcessingServiceImpl implements RagProcessingService {
             }
 
             if (fullText == null || fullText.isBlank()) {
-                throw new RuntimeException(
-                    "文档解析失败：未能提取到文字内容。"
-                    + "该文件可能为扫描件或图片型 PDF（无文字层），"
-                    + "当前暂不支持 OCR 识别。"
-                    + "请上传文本型 PDF（如 Word 导出、网页打印生成的 PDF）"
-                    + "或 DOCX/DOC/TXT/MD 格式的文档。");
+                throw new RuntimeException("文档内容为空或无法解析");
             }
             log.debug("文档解析完成，总字符数: {}", fullText.length());
 

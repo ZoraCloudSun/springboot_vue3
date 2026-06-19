@@ -17,6 +17,7 @@
           知识库回收站
           <el-badge v-if="kbRecycleBinCount > 0" :value="kbRecycleBinCount" class="recycle-badge" />
         </el-button>
+        <el-button @click="$router.push('/chat')">返回AI对话</el-button>
         <el-button @click="$router.push('/home')">返回主页</el-button>
       </div>
     </div>

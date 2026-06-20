@@ -161,6 +161,13 @@
           <h1 class="header-title">{{ currentTitle || '新对话' }}</h1>
         </div>
         <div class="header-right">
+          <!-- Phase 3.3: Agent 智能体开关 -->
+          <el-switch
+            v-model="agentMode"
+            size="small"
+            active-text="Agent"
+            style="margin-right: 8px"
+          />
           <!-- Phase 2: RAG 知识库选择器 -->
           <template v-if="knowledgeBases.length > 0">
             <el-switch
@@ -188,6 +195,70 @@
           <span class="header-badge">DeepSeek</span>
         </div>
       </header>
+
+      <!-- Phase 3.3: Agent 推理过程面板 -->
+      <Transition name="reasoning-panel">
+        <div v-if="agentMode && reasoningSteps.length > 0 && showReasoning" class="reasoning-panel">
+          <div class="reasoning-header">
+            <div class="reasoning-title">
+              <el-icon :size="14"><Cpu /></el-icon>
+              <span>推理过程</span>
+              <span class="reasoning-count">{{ reasoningSteps.length }} 步</span>
+            </div>
+            <button class="reasoning-collapse" @click="showReasoning = false" title="收起">
+              <el-icon :size="14"><ArrowUp /></el-icon>
+            </button>
+          </div>
+          <div class="reasoning-steps">
+            <div
+              v-for="(step, idx) in reasoningSteps"
+              :key="idx"
+              class="reasoning-step"
+              :class="'step-' + step.type"
+            >
+              <!-- thinking: 思考过程 -->
+              <template v-if="step.type === 'thinking'">
+                <span class="step-icon step-icon-think">
+                  <el-icon :size="12"><Loading /></el-icon>
+                </span>
+                <span class="step-text">{{ step.content }}</span>
+              </template>
+
+              <!-- tool_call: 工具调用 -->
+              <template v-else-if="step.type === 'tool_call'">
+                <span class="step-icon step-icon-tool">
+                  <el-icon :size="12"><Tools /></el-icon>
+                </span>
+                <span class="step-label">调用工具：</span>
+                <span class="step-tool-name">{{ step.tool }}</span>
+                <span class="step-args" v-if="step.args && Object.keys(step.args).length">
+                  <code>{{ formatToolArgs(step.args) }}</code>
+                </span>
+              </template>
+
+              <!-- tool_result: 工具结果 -->
+              <template v-else-if="step.type === 'tool_result'">
+                <span class="step-icon step-icon-result">
+                  <el-icon :size="12"><CircleCheck /></el-icon>
+                </span>
+                <span class="step-label">工具返回：</span>
+                <span class="step-result-text">{{ formatToolResult(step.content) }}</span>
+              </template>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- 收起态：显示推理摘要条 -->
+      <div
+        v-if="agentMode && reasoningSteps.length > 0 && !showReasoning"
+        class="reasoning-collapsed"
+        @click="showReasoning = true"
+      >
+        <el-icon :size="12"><Cpu /></el-icon>
+        <span>推理过程 ({{ reasoningSteps.length }} 步)</span>
+        <el-icon :size="12"><ArrowDown /></el-icon>
+      </div>
 
       <!-- 消息列表 -->
       <div class="chat-messages" ref="messagesContainer">
@@ -253,11 +324,23 @@
           <div class="message-body">
             <div class="message-sender">
               AI
-              <span class="typing-indicator">
+              <span v-if="agentMode && !streamingContent" class="agent-thinking-label">
+                <el-icon :size="12" class="spin-icon"><Cpu /></el-icon>
+                思考中...
+              </span>
+              <span class="typing-indicator" v-if="!agentMode || streamingContent">
                 <span></span><span></span><span></span>
               </span>
             </div>
+            <!-- Agent 推理中暂未输出 token 时显示占位提示 -->
             <div
+              v-if="agentMode && !streamingContent && reasoningSteps.length > 0"
+              class="message-text agent-thinking-text"
+            >
+              正在分析问题，请稍候...
+            </div>
+            <div
+              v-else-if="streamingContent"
               class="message-text markdown-body"
               v-html="renderMarkdown(streamingContent)"
             ></div>
@@ -325,6 +408,8 @@ import {
   Plus, Fold, Expand, Delete, HomeFilled, ChatDotRound,
   CopyDocument, Promotion, VideoPause, Search, ChatLineRound,
   UserFilled, RefreshLeft, Collection, CircleCheckFilled,
+  // Phase 3.3: Agent 推理面板图标
+  Cpu, Loading, Tools, CircleCheck, ArrowUp, ArrowDown,
 } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
@@ -336,6 +421,8 @@ import {
   getDeletedConversations, restoreConversation, permanentDeleteConversation,
 } from '@/api/ai'
 import { streamRagChat, listKnowledgeBases } from '@/api/rag'
+// Phase 3.3: Agent SSE 流式对话
+import { streamAgentChat } from '@/api/agent'
 
 const router = useRouter()
 const messagesContainer = ref(null)
@@ -356,6 +443,11 @@ let abortController = null
 const ragEnabled = ref(false)
 const knowledgeBases = ref([])
 const selectedKbId = ref(null)
+
+// ==================== Phase 3.3: Agent 智能体状态 ====================
+const agentMode = ref(false)          // Agent 模式开关
+const reasoningSteps = ref([])        // 推理步骤数组 [{type, content/tool/args, ts}]
+const showReasoning = ref(true)       // 推理面板展开/折叠
 
 // 回收站状态
 const showTrash = ref(false)
@@ -556,16 +648,72 @@ const handleSend = async (e) => {
   inputMessage.value = ''
   isStreaming.value = true
   streamingContent.value = ''
+  // Phase 3.3: 清空上一轮的推理步骤
+  reasoningSteps.value = []
+  showReasoning.value = true
   messages.value.push({ role: 'user', content: msg })
   await scrollToBottom()
 
   const convId = currentConversationId.value
 
-  // Phase 2: RAG 模式 — 使用知识库增强的流式对话
+  // ==================== Phase 3.3: Agent 模式 — 结构化 SSE 流式对话 ====================
+  if (agentMode.value) {
+    abortController = streamAgentChat(
+      msg, convId,
+      // onThinking: Agent 思考过程
+      (content) => {
+        reasoningSteps.value.push({ type: 'thinking', content, ts: Date.now() })
+        scrollToBottom()
+      },
+      // onToolCall: Agent 调用工具
+      (tool, args) => {
+        reasoningSteps.value.push({ type: 'tool_call', tool, args, ts: Date.now() })
+        scrollToBottom()
+      },
+      // onToolResult: 工具执行完毕
+      (tool, content) => {
+        reasoningSteps.value.push({ type: 'tool_result', tool, content, ts: Date.now() })
+        scrollToBottom()
+      },
+      // onToken: 最终回答 token
+      (token) => {
+        streamingContent.value += token
+        scrollToBottom()
+      },
+      // onDone: 对话完成
+      async (conversationId) => {
+        if (streamingContent.value) {
+          messages.value.push({ role: 'assistant', content: streamingContent.value })
+        }
+        streamingContent.value = ''
+        isStreaming.value = false
+        abortController = null
+        if (!currentConversationId.value) {
+          await loadConversations()
+          if (conversations.value.length > 0) {
+            currentConversationId.value = conversations.value[0].id
+          }
+        } else {
+          await loadConversations()
+        }
+        await scrollToBottom()
+      },
+      // onError: 出错
+      (error) => {
+        ElMessage.error(error.message || 'AI 请求失败')
+        if (streamingContent.value) {
+          messages.value.push({ role: 'assistant', content: streamingContent.value + '\n\n*[回复中断]*' })
+        }
+        streamingContent.value = ''
+        isStreaming.value = false
+        abortController = null
+      },
+    )
+    return
+  }
+
+  // ==================== Phase 2: RAG / 标准模式（原有逻辑） ====================
   const kbId = ragEnabled.value ? selectedKbId.value : null
-  const chatFn = kbId ? streamRagChat : (m, cid, onT, onD, onE) =>
-    streamChat(m, cid, onT, onD, onE)
-  // 适配 streamRagChat 的第 3 个参数 knowledgeBaseId
   const callChat = kbId
     ? (onT, onD, onE) => streamRagChat(msg, convId, kbId, onT, onD, onE)
     : (onT, onD, onE) => streamChat(msg, convId, onT, onD, onE)
@@ -635,6 +783,53 @@ const copyContent = (text) => {
   navigator.clipboard.writeText(text).then(() => {
     ElMessage.success('已复制')
   }).catch(() => ElMessage.error('复制失败'))
+}
+
+// ==================== Phase 3.3: Agent 推理面板工具函数 ====================
+
+/**
+ * 格式化工具调用参数为简洁的字符串显示
+ * <p>
+ * 将参数对象转为 "key=value" 格式，方便在推理面板中显示。
+ * 对于嵌套对象，先尝试 JSON 序列化再截断。
+ * </p>
+ */
+const formatToolArgs = (args) => {
+  if (!args || typeof args !== 'object') return ''
+  const entries = Object.entries(args)
+  if (!entries.length) return ''
+  return entries.map(([k, v]) => {
+    const val = typeof v === 'object' ? JSON.stringify(v) : String(v)
+    return `${k}=${val.length > 60 ? val.substring(0, 60) + '…' : val}`
+  }).join(', ')
+}
+
+/**
+ * 格式化工具返回结果为简短摘要
+ * <p>
+ * 工具返回内容可能很长（如搜索结果 JSON），在推理面板中只需显示摘要。
+ * 截取前 120 字符，并尝试从 JSON 中提取有意义的信息。
+ * </p>
+ */
+const formatToolResult = (content) => {
+  if (!content) return '(空)'
+  // 尝试作为 JSON 解析，提取摘要信息
+  try {
+    const obj = JSON.parse(content)
+    if (obj.error) return `错误: ${obj.error}`
+    if (obj.result !== undefined) return `结果: ${obj.result}`
+    if (obj.expression && obj.result !== undefined) return `${obj.expression} = ${obj.result}`
+    // 搜索结果
+    if (obj.results && Array.isArray(obj.results)) return `找到 ${obj.results.length} 条结果`
+    if (obj.answer) return String(obj.answer).substring(0, 80)
+    // 代码执行结果
+    if (obj.success !== undefined) {
+      if (obj.stdout) return String(obj.stdout).substring(0, 80)
+      return obj.success ? '执行成功' : `执行失败: ${obj.error || '未知错误'}`
+    }
+  } catch {}
+  // 纯文本截断
+  return content.length > 120 ? content.substring(0, 120) + '…' : content
 }
 
 const autoResize = () => {
@@ -1424,5 +1619,215 @@ onMounted(() => { loadConversations(); loadKbs() })
   max-width: 820px;
   margin-left: auto;
   margin-right: auto;
+}
+
+/* ==================== Phase 3.3: Agent 推理面板 ==================== */
+
+/* 推理面板容器 */
+.reasoning-panel {
+  max-width: 820px;
+  margin: 8px auto 0;
+  background: #fafbff;
+  border: 1px solid #d6e4ff;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* 推理面板头部 */
+.reasoning-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #f0f5ff, #fafbff);
+  border-bottom: 1px solid #e6f0ff;
+}
+.reasoning-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1677ff;
+}
+.reasoning-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: #8e8e93;
+  background: #e8f0fe;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.reasoning-collapse {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: #8e8e93;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.reasoning-collapse:hover {
+  background: #e8f0fe;
+  color: #1677ff;
+}
+
+/* 推理步骤列表 */
+.reasoning-steps {
+  padding: 6px 14px 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #d0d0d4 transparent;
+}
+.reasoning-steps::-webkit-scrollbar { width: 4px; }
+.reasoning-steps::-webkit-scrollbar-thumb {
+  background: #d0d0d4;
+  border-radius: 4px;
+}
+
+/* 推理步骤项 */
+.reasoning-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 8px;
+  margin-bottom: 3px;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+  font-size: 12px;
+  line-height: 1.5;
+  animation: step-enter 0.25s ease-out;
+}
+@keyframes step-enter {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 步骤色彩编码 */
+.step-thinking {
+  border-left-color: #1677ff;
+  background: #f0f5ff;
+}
+.step-tool_call {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+}
+.step-tool_result {
+  border-left-color: #10b981;
+  background: #f0fdf6;
+}
+
+/* 步骤图标 */
+.step-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.step-icon-think { background: #e8f0fe; color: #1677ff; }
+.step-icon-tool  { background: #fef3c7; color: #f59e0b; }
+.step-icon-result { background: #d1fae5; color: #10b981; }
+
+.step-text {
+  color: #3c3c3e;
+  flex: 1;
+}
+.step-label {
+  color: #8e8e93;
+  flex-shrink: 0;
+}
+.step-tool-name {
+  font-weight: 600;
+  color: #f59e0b;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+}
+.step-args code {
+  font-size: 11px;
+  color: #636366;
+  background: #f0f0f2;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  word-break: break-all;
+}
+.step-result-text {
+  color: #3c3c3e;
+  word-break: break-word;
+}
+
+/* 收起态摘要条 */
+.reasoning-collapsed {
+  max-width: 820px;
+  margin: 6px auto 0;
+  padding: 6px 14px;
+  background: #fafbff;
+  border: 1px solid #d6e4ff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #1677ff;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.reasoning-collapsed:hover {
+  background: #f0f5ff;
+  border-color: #1677ff;
+}
+.reasoning-collapsed span { flex: 1; }
+
+/* 推理面板过渡动画 */
+.reasoning-panel-enter-active,
+.reasoning-panel-leave-active {
+  transition: all 0.25s ease;
+}
+.reasoning-panel-enter-from,
+.reasoning-panel-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.reasoning-panel-enter-to,
+.reasoning-panel-leave-from {
+  opacity: 1;
+  max-height: 300px;
+}
+
+/* Agent 思考标签 */
+.agent-thinking-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #1677ff;
+  font-weight: 500;
+}
+.spin-icon {
+  animation: spin 1.2s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Agent 思考中占位文本 */
+.agent-thinking-text {
+  color: #8e8e93 !important;
+  font-style: italic;
+  font-size: 13px !important;
+  background: #fafbff !important;
+  border: 1px dashed #d6e4ff !important;
 }
 </style>

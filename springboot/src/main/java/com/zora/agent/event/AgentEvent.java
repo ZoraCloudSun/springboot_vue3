@@ -165,6 +165,23 @@ public class AgentEvent {
         }
     }
 
+    /**
+     * 向事件数据中添加额外字段（Phase 3.5 多 Agent 显示需要）
+     * <p>
+     * 例：{@code AgentEvent.thinking("...").withField("agent", "research").toJson()}
+     * 会在 JSON 中增加 {@code "agent":"research"} 字段。
+     * 此方法返回 this 以支持链式调用。
+     * </p>
+     *
+     * @param key   字段名
+     * @param value 字段值
+     * @return this（链式调用）
+     */
+    public AgentEvent withField(String key, Object value) {
+        this.data.put(key, value);
+        return this;
+    }
+
     // ==================== getter ====================
 
     public String getType() { return type; }

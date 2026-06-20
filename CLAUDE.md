@@ -44,7 +44,7 @@ npm run dev                  # → http://localhost:3000
 #    Redis:    localhost:6379
 
 # Run tests
-cd springboot && mvn test        # 212 tests, ~10s
+cd springboot && mvn test        # 371 tests, ~20s
 ```
 
 **How hot reload works**:
@@ -96,7 +96,7 @@ docker compose logs -f backend
 cd springboot
 mvn spring-boot:run
 
-# Run tests (212 tests, ~10 seconds)
+# Run tests (371 tests, ~20 seconds)
 cd springboot
 mvn test
 
@@ -146,11 +146,21 @@ springboot/src/main/java/com/zora/
 │   ├── WechatConfig.java                  #   微信 OAuth 配置
 │   ├── CleanupTask.java                   #   定时清理任务
 │   └── SwaggerCompatController.java       #   Swagger JSON 兼容端点
-├── agent/                                 # Agent 智能体（Phase 3，4 个子包）
+├── agent/                                 # Agent 智能体（Phase 3，5 个子包）
 │   ├── AgentService.java                  #   Agent 服务接口
-│   ├── impl/AgentServiceImpl.java         #   核心实现：两阶段流式 + ReAct 循环
+│   ├── impl/AgentServiceImpl.java         #   核心实现：两阶段流式 + ReAct + 多 Agent
 │   ├── tool/Tool.java                     #   工具标记接口（Phase 3.2 实现具体工具）
-│   └── event/AgentEvent.java              #   结构化 SSE 事件 record
+│   ├── event/AgentEvent.java              #   结构化 SSE 事件 record + withField
+│   ├── memory/                            #   Phase 3.4 记忆系统
+│   │   └── RedisChatMemoryStore.java      #     LangChain4j ChatMemoryStore Redis 实现
+│   └── graph/                             #   Phase 3.5 多 Agent 编排
+│       ├── AgentState.java                #     图状态"黑板"（SpecialistResult record）
+│       ├── AgentNode.java                 #     节点统一接口
+│       ├── SupervisorAgent.java           #     LLM 零样本意图分类器
+│       ├── ResearchAgent.java             #     研究搜索专家（WebSearchTool）
+│       ├── MathAgent.java                 #     数学计算专家（MathTool）
+│       ├── CodeAgent.java                 #     代码执行专家（CodeExecutionTool）
+│       └── AgentGraph.java                #     多 Agent 编排器（Supervisor + Summarizer）
 ├── controller/                            # REST 控制器（4 个，33+ 端点）
 │   ├── UserController.java                #   用户认证（16 端点）
 │   ├── AiChatController.java              #   AI 对话 + SSE + RAG 对话
@@ -161,12 +171,15 @@ springboot/src/main/java/com/zora/
 │   ├── AiChatService.java / impl/AiChatServiceImpl.java       # AI 对话 + RAG 注入
 │   ├── RagService.java / impl/RagServiceImpl.java             # 知识库 CRUD + 回收站
 │   ├── RagProcessingService.java / impl/RagProcessingServiceImpl.java  # 文档处理 + 启动重建
+│   ├── ConversationSummaryService.java / impl/ConversationSummaryServiceImpl.java  # Phase 3.4 对话摘要
 │   └── impl/SimpleEmbeddingStore.java     #   余弦相似度内存向量存储
-├── entity/                                # 实体类（7 个）
+├── entity/                                # 实体类（8 个）
 │   ├── User.java, ChatConversation.java, ChatMessage.java
 │   ├── KnowledgeBase.java, KbDocument.java, KbChunk.java
-│   └── AgentStep.java                     #   瞬态 POJO（Phase 3，记录推理步骤）
-├── mapper/                                # MyBatis-Plus Mapper（6 个，BaseMapper 免写 SQL）
+│   ├── AgentStep.java                     #   瞬态 POJO（Phase 3，记录推理步骤）
+│   └── ChatConversationSummary.java       #   Phase 3.4 对话摘要实体
+├── mapper/                                # MyBatis-Plus Mapper（7 个，BaseMapper 免写 SQL）
+│   └── ChatConversationSummaryMapper.java #   Phase 3.4 摘要 Mapper
 ├── exception/                             # 异常体系（7 个）
 │   ├── BusinessException.java             #   基类
 │   ├── BadRequestException (400) / UnauthorizedException (401)
@@ -189,7 +202,7 @@ web/frontend/src/
 ├── router/index.js                        # 路由 + 导航守卫
 └── utils/token.js                         # localStorage 双 Token 存取
 
-springboot/src/test/java/com/zora/          # 单元测试（212 个）
+springboot/src/test/java/com/zora/          # 单元测试（371 个）
 ├── utils/         ResponseUtilTest, CaptchaUtilTest, JwtUtilTest
 ├── service/       UserServiceImplTest, RagServiceImplTest, EmbeddingDebugTest
 ├── config/        LoginInterceptorTest, RoleInterceptorTest, SwaggerCompatControllerTest
@@ -495,7 +508,10 @@ All `/agent/**` endpoints require login (same as `/ai/**` — intercepted by `Lo
 | Config | `config/AgentConfig.java` — `@ConfigurationProperties(prefix="agent")` |
 | Agent Service | `agent/AgentService.java` — Agent 服务接口 |
 | Agent Impl | `agent/impl/AgentServiceImpl.java` — 核心实现：两阶段流式 + ReAct 循环 |
-| Tool SPI | `agent/tool/Tool.java` — 工具标记接口（Phase 3.2 实现具体工具） |
+| Tool SPI | `agent/tool/Tool.java` — 工具标记接口 |
+| Web Search Tool | `agent/tool/WebSearchTool.java` — Tavily Search API 网页搜索 |
+| Math Tool | `agent/tool/MathTool.java` — exp4j 安全数学表达式求值 |
+| Code Execution Tool | `agent/tool/CodeExecutionTool.java` — JS ScriptEngine 沙箱代码执行 |
 | Event | `agent/event/AgentEvent.java` — 结构化 SSE 事件 record |
 | Controller | `controller/AgentController.java` — `/agent/chat/stream` SSE 端点 |
 | Entity | `entity/AgentStep.java` — 瞬态 POJO，记录推理步骤 |
@@ -533,15 +549,81 @@ agent:
 - **限流**：Redis ZSET 滑动窗口，10 次/分钟/用户（`agent_rate:` key）
 - **注入检测**：18 种中英文 Prompt Injection 模式
 
+### Built-in Tools (Phase 3.2)
+
+Three concrete tool implementations, all discovered by Spring via `List<Tool>` auto-injection:
+
+| Tool | Class | Implementation | Default |
+|------|-------|---------------|---------|
+| 🌐 Web Search | `agent/tool/WebSearchTool.java` | Tavily Search API (POST, JSON response with title/url/content) | enabled |
+| 🧮 Math | `agent/tool/MathTool.java` | exp4j 0.4.8 safe expression evaluation (+, -, *, /, ^, %, sin/cos/tan, log/sqrt, pi/e, !) | enabled |
+| 💻 Code Execution | `agent/tool/CodeExecutionTool.java` | JDK `ScriptEngine` JavaScript sandbox (timeout + output cap + audit log) | **disabled** (security) |
+
+**Tool registration mechanism**: Each tool implements the `Tool` marker interface → Spring auto-collects via `@Autowired(required = false) List<Tool>` → `AgentServiceImpl.getEnabledTools()` filters by `agent.tools.*.enabled` config → LangChain4j `ToolSpecifications.toolSpecificationsFrom()` extracts `@Tool` annotations for LLM function calling.
+
+**Adding a new tool**:
+1. Create class implementing `com.zora.agent.tool.Tool`
+2. Annotate with `@Component` + `@dev.langchain4j.agent.tool.Tool("description")`
+3. Add `@P("param description")` on each parameter
+4. Add switch config in `AgentConfig.ToolsConfig` and `application.yml`
+5. Write unit test extending `@ExtendWith(MockitoExtension.class)`
+
+### Agent 可视化推理过程 (Phase 3.3)
+
+前端 Chat.vue 集成 Agent 推理可视化，用户可以实时观察 Agent 的思考、工具调用和工具返回过程。
+
+**UI 组件**:
+
+| 组件 | 位置 | 功能 |
+|------|------|------|
+| Agent 模式开关 | chat-header `el-switch` | 开启/关闭 Agent 模式（与 RAG 开关并列） |
+| 推理面板 | chat-header 下方 | 可折叠面板，展示思考步骤/工具调用/工具结果的时序流 |
+| 思考指示器 | 流式消息中 | 推理过程中显示旋转 CPU 图标 + "思考中..." |
+| 收起摘要条 | 推理面板折叠时 | 单行显示 "推理过程 (N 步)"，点击展开 |
+
+**色彩编码**:
+
+| 步骤类型 | 边框颜色 | 背景色 | 图标 |
+|---------|---------|--------|------|
+| `thinking` | 蓝色 `#1677ff` | `#f0f5ff` | Loading 旋转 |
+| `tool_call` | 琥珀色 `#f59e0b` | `#fffbeb` | Tools 工具 |
+| `tool_result` | 绿色 `#10b981` | `#f0fdf6` | CircleCheck 对勾 |
+
+**数据流**:
+```
+streamAgentChat() → SSE 解析 → dispatchEvent()
+  ├── onThinking  → reasoningSteps.push({type:'thinking', ...})
+  ├── onToolCall  → reasoningSteps.push({type:'tool_call', ...})
+  ├── onToolResult → reasoningSteps.push({type:'tool_result', ...})
+  ├── onToken     → streamingContent += token
+  ├── onDone      → 最终消息推入 messages[]
+  └── onError     → ElMessage.error()
+```
+
+**关键设计**:
+- `reasoningSteps` 独立于 `messages` 数组——推理步骤是元数据，不混入对话历史
+- `formatToolArgs()` 将参数对象转为 `key=value` 字符串显示（截断 60 字符）
+- `formatToolResult()` 智能解析 JSON 结果，提取摘要信息
+- Vue `<Transition name="reasoning-panel">` 实现面板平滑滑入/滑出
+- 每个步骤项有 `@keyframes step-enter` 上滑淡入动画
+- 收起态与展开态互斥显示，保持页面整洁
+
+**前端文件**:
+
+| File | Purpose |
+|------|---------|
+| `api/agent.js` | Agent SSE 客户端（`streamAgentChat()` + `dispatchEvent()`） |
+| `views/Chat.vue` | Agent 开关、推理面板、思考指示器、三模式分发（Agent/RAG/标准） |
+
 ### Phase 3 Sub-phases
 
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 3.1 | LangChain4j Tool Calling 基础框架 + AgentController + SSE 协议 | ✅ Done |
-| 3.2 | 内置工具：WebSearchTool, MathTool, CodeExecutionTool | ⬜ Pending |
-| 3.3 | Agent 可视化推理过程（Chat.vue 推理面板） | ⬜ Pending |
-| 3.4 | 记忆摘要 + 长期记忆（ChatMemory + ConversationSummary） | ⬜ Pending |
-| 3.5 | 多 Agent 编排（Supervisor + Specialist Agents） | ⬜ Pending |
+| 3.2 | 内置工具：WebSearchTool, MathTool, CodeExecutionTool（55 个新测试）| ✅ Done |
+| 3.3 | Agent 可视化推理过程（Chat.vue 推理面板，18 个新测试） | ✅ Done |
+| 3.4 | 记忆摘要 + 长期记忆（ChatMemory + ConversationSummary，24 个新测试） | ✅ Done |
+| 3.5 | 多 Agent 编排（Supervisor + Specialist Agents + AgentGraph） | ✅ Done |
 
 ### Frontend
 
@@ -549,11 +631,108 @@ agent:
 |------|---------|
 | `api/agent.js` | Agent SSE 客户端，解析结构化事件并分发到回调函数 |
 
----
+### Agent 记忆系统 (Phase 3.4)
 
-## Testing
+实现短期记忆窗口（ChatMemory）和长期记忆摘要（ConversationSummary），让 AI 在长对话中"记住"早期讨论内容。
 
-**Framework**: JUnit 5 + Mockito + Spring MockMvc (standalone setup). All 212 tests run as pure unit tests — no MySQL/Redis/network dependency, CI-ready. (Including RAG knowledge base tests with two-level recycle bin)
+**架构**:
+
+```
+每次 AI 回复 → checkAndSummarize(conversationId)
+  ├── 消息数不足阈值 → 跳过
+  └── 达到阈值 → CompletableFuture.runAsync()
+       ├── 加载未覆盖消息
+       ├── 调用 LLM 生成 ≤300 字摘要
+       ├── 存储到 chat_conversation_summary 表
+       └── 更新 chat_conversation.summary_id
+```
+
+**数据库变更** (V4__agent_tables.sql):
+
+| 变更 | 说明 |
+|------|------|
+| 新建 `chat_conversation_summary` 表 | id, conversation_id, summary, message_count, created_at |
+| `chat_conversation` 新增 `summary_id` 列 | 指向最新摘要的外键 |
+
+**摘要上下文注入**: 后续对话时，`buildSystemPromptWithMemory()` 将历史摘要注入 System Prompt 之前。
+
+**Redis 记忆缓存**: `RedisChatMemoryStore` 实现 LangChain4j `ChatMemoryStore` 接口，将消息窗口缓存到 Redis（TTL 24h）。Key 格式：`memory:conv:{conversationId}`。
+
+**核心文件**:
+
+| Layer | File |
+|-------|------|
+| Migration | `db/migration/V4__agent_tables.sql` |
+| Entity | `entity/ChatConversationSummary.java` |
+| Mapper | `mapper/ChatConversationSummaryMapper.java` |
+| Memory Store | `agent/memory/RedisChatMemoryStore.java` |
+| Service | `service/ConversationSummaryService.java` |
+| Impl | `service/impl/ConversationSummaryServiceImpl.java` |
+| Modified | `agent/impl/AgentServiceImpl.java` — 注入摘要上下文 + 触发摘要生成 |
+| Modified | `entity/ChatConversation.java` — 新增 summaryId 字段 |
+| Modified | `config/AgentConfig.java` — MemoryConfig 已在 Phase 3.1 预定义 |
+
+### 多 Agent 编排 (Phase 3.5)
+
+实现 Supervisor → Specialist → Summarizer 的多 Agent 协作模式，让不同类型的任务由对应领域的专家 Agent 处理。
+
+**架构**:
+
+```
+User Message → AgentServiceImpl (multi-agent enabled)
+  ├── SupervisorAgent (意图分类: research/math/code/general)
+  │     ├── research → ResearchAgent (WebSearchTool)
+  │     ├── math     → MathAgent (MathTool)
+  │     ├── code     → CodeAgent (CodeExecutionTool)
+  │     └── general  → 直接流式回答（无需 Specialist）
+  └── Summarizer（聚合所有专家结果）→ 流式最终回复
+```
+
+**核心组件**:
+
+| 组件 | 职责 |
+|------|------|
+| `AgentState` | 图状态"黑板"，各节点通过它共享信息（用户消息、意图、专家结果等） |
+| `AgentNode` | 节点统一接口：`execute(state, emitter) → String` |
+| `SupervisorAgent` | 使用 LLM 进行零样本意图分类，将任务路由到合适的 Specialist |
+| `ResearchAgent` | 研究专家：使用 WebSearchTool 搜索互联网信息 |
+| `MathAgent` | 数学专家：使用 MathTool (exp4j) 进行安全数学计算 |
+| `CodeAgent` | 代码专家：使用 CodeExecutionTool (ScriptEngine) 在沙箱中执行 JS 代码 |
+| `AgentGraph` | 编排器：协调 Supervisor → Specialist → Summarizer 流程，限制最多 3 次 Specialist 调用 |
+
+**关键设计**:
+- **"黑板"模式**：Agent 节点通过共享的 `AgentState` 通信，完全解耦
+- **降级策略**：多 Agent 异常 → 标准 Agent 循环 → 直接回答，三层降级
+- **安全限制**：最多 `maxSpecialistCalls` 次（默认 3），防止无限循环
+- **SSE 增强**：`AgentEvent.withField("agent", "research")` 标记事件来源，前端可显示活跃的 Specialist
+
+**配置**:
+
+```yaml
+agent:
+  multi-agent:
+    enabled: ${AGENT_MULTI_AGENT:false}      # 默认关闭
+    max-specialist-calls: 3
+```
+
+**核心文件**:
+
+| Layer | File |
+|-------|------|
+| State | `agent/graph/AgentState.java` |
+| Node Interface | `agent/graph/AgentNode.java` |
+| Supervisor | `agent/graph/SupervisorAgent.java` |
+| Research Specialist | `agent/graph/ResearchAgent.java` |
+| Math Specialist | `agent/graph/MathAgent.java` |
+| Code Specialist | `agent/graph/CodeAgent.java` |
+| Orchestrator | `agent/graph/AgentGraph.java` |
+| Modified | `agent/impl/AgentServiceImpl.java` — 多 Agent 模式入口 + 工具注入 |
+| Modified | `agent/event/AgentEvent.java` — 新增 `withField()` 方法 |
+| Config | `config/AgentConfig.java` — MultiAgentConfig 已在 Phase 3.1 预定义 |
+
+
+
+**Framework**: JUnit 5 + Mockito + Spring MockMvc (standalone setup). All 371 tests run as pure unit tests — no MySQL/Redis/network dependency, CI-ready. (Including RAG knowledge base tests with two-level recycle bin and Agent tool tests)
 
 **Run**: `cd springboot && mvn test` (~10 seconds, 0 failures).
 
@@ -576,7 +755,7 @@ agent:
 - Real `BCryptPasswordEncoder` (spied) for service tests — no external dependency
 - Standalone MockMvc controllers wired with `ReflectionTestUtils.setField(controller, "userService", mock)` + `.setControllerAdvice(new GlobalExceptionHandler())`
 
-**Test config**: `springboot/src/test/resources/application.yml` provides H2 datasource + placeholder credentials for `@Value` injection — but pure unit tests (all current 212 tests) never load it.
+**Test config**: `springboot/src/test/resources/application.yml` provides H2 datasource + placeholder credentials for `@Value` injection — but pure unit tests (all current 371 tests) never load it.
 
 ---
 

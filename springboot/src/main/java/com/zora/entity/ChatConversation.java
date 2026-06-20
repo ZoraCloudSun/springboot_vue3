@@ -40,6 +40,10 @@ public class ChatConversation {
     @Schema(description = "软删除时间（null 表示未删除）")
     private LocalDateTime deletedAt;
 
+    @TableField(value = "summary_id")
+    @Schema(description = "最新摘要 ID（Phase 3.4 长期记忆）")
+    private Long summaryId;
+
     public ChatConversation() {
     }
 
@@ -94,5 +98,13 @@ public class ChatConversation {
 
     public void setDeletedAt(LocalDateTime deletedAt) {
         this.deletedAt = deletedAt;
+    }
+
+    public Long getSummaryId() {
+        return summaryId;
+    }
+
+    public void setSummaryId(Long summaryId) {
+        this.summaryId = summaryId;
     }
 }

@@ -1,6 +1,7 @@
 package com.zora.agent.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zora.agent.memory.RedisChatMemoryStore;
 import com.zora.config.AgentConfig;
 import com.zora.entity.ChatConversation;
 import com.zora.entity.ChatMessage;
@@ -11,6 +12,7 @@ import com.zora.exception.RateLimitException;
 import com.zora.mapper.ChatConversationMapper;
 import com.zora.mapper.ChatMessageMapper;
 import com.zora.mapper.UserMapper;
+import com.zora.service.ConversationSummaryService;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.ChatModel;
@@ -76,6 +78,10 @@ class AgentServiceImplTest {
     @Mock
     private AgentConfig.CodeExecConfig codeExecConfig;
 
+    // Phase 3.5: 多 Agent 编排配置
+    @Mock
+    private AgentConfig.MultiAgentConfig multiAgentConfig;
+
     @Mock
     private UserMapper userMapper;
 
@@ -90,6 +96,13 @@ class AgentServiceImplTest {
 
     @Mock
     private ZSetOperations<String, String> zSetOperations;
+
+    // Phase 3.4: 记忆系统依赖
+    @Mock
+    private ConversationSummaryService summaryService;
+
+    @Mock
+    private RedisChatMemoryStore memoryStore;
 
     @InjectMocks
     private AgentServiceImpl agentService;
@@ -116,6 +129,15 @@ class AgentServiceImplTest {
         lenient().when(toolsConfig.getMath()).thenReturn(mathSwitch);
         lenient().when(toolsConfig.getCodeExecution()).thenReturn(codeExecConfig);
         lenient().when(codeExecConfig.isEnabled()).thenReturn(false);
+
+        // Phase 3.5: 多 Agent 编排 mock（默认关闭）
+        lenient().when(agentConfig.getMultiAgent()).thenReturn(multiAgentConfig);
+        lenient().when(multiAgentConfig.isEnabled()).thenReturn(false);
+        lenient().when(multiAgentConfig.getMaxSpecialistCalls()).thenReturn(3);
+
+        // Phase 3.4: 记忆系统 mock（避免 checkAndSummarize NPE）
+        lenient().doNothing().when(summaryService).checkAndSummarize(anyLong());
+        lenient().when(summaryService.buildSummaryContext(anyLong())).thenReturn("");
 
         // 默认 Redis 限流 mock
         lenient().when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);

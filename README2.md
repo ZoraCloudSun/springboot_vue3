@@ -6,7 +6,7 @@
 
 ## 项目简介
 
-在已有的用户认证系统（JWT 双 Token + 微信 OAuth + RBAC）基础上，新增 **AI 智能对话** 和 **RAG 知识库** 两大核心功能。用户登录后可与 DeepSeek 大模型实时对话，支持多轮上下文、对话历史管理、Markdown 代码高亮渲染；亦可上传文档构建专属知识库，让 AI 回答基于用户自己的文档内容。
+在已有的用户认证系统（JWT 双 Token + 微信 OAuth + RBAC）基础上，新增 **AI 智能对话**、**RAG 知识库** 和 **AI Agent 智能体** 三大核心功能。用户登录后可与 DeepSeek 大模型实时对话，支持多轮上下文、对话历史管理、Markdown 代码高亮渲染；亦可上传文档构建专属知识库，让 AI 回答基于用户自己的文档内容；还可启用 AI Agent 智能体，让 AI 自主调用搜索、计算、代码执行等工具完成复杂任务。
 
 ### 核心能力
 
@@ -14,6 +14,7 @@
 |------|------|
 | 🤖 AI 智能对话 | DeepSeek-V3 大模型驱动，中英文对话、代码生成、数据分析 |
 | 🤖 AI Agent 智能体 | LangChain4j Tool Calling 框架，AI 可自主调用工具（搜索/计算/代码执行）完成复杂任务 |
+| 🧠 多 Agent 协作 | Supervisor 意图分类 → 专家 Agent 执行（研究/数学/代码）→ Summarizer 聚合结果，三层降级保障 |
 | 📡 SSE 流式传输 | 逐字输出，打字机效果，120 秒超时支持长回复 |
 | 📝 Markdown 渲染 | 完整 Markdown 支持：标题、列表、表格、引用、代码块（190+ 语言语法高亮） |
 | 🔒 XSS 安全过滤 | DOMPurify 过滤 AI 输出中的潜在恶意 HTML/JS |
@@ -310,9 +311,19 @@ springboot/
 │   │   └── SecurityConfig.java        # Spring Security（仅 BCrypt）
 │   ├── agent/                         # 🆕 Agent 智能体（Phase 3）
 │   │   ├── AgentService.java          # Agent 服务接口
-│   │   ├── impl/AgentServiceImpl.java # 核心实现：两阶段流式 + ReAct 循环（~500行）
+│   │   ├── impl/AgentServiceImpl.java # 核心实现：两阶段流式 + ReAct + 多 Agent（~950行）
 │   │   ├── tool/Tool.java             # 工具标记接口（所有工具实现此接口）
-│   │   └── event/AgentEvent.java      # 结构化 SSE 事件 record
+│   │   ├── event/AgentEvent.java      # 结构化 SSE 事件 record + withField 增强
+│   │   ├── memory/
+│   │   │   └── RedisChatMemoryStore.java # LangChain4j ChatMemoryStore Redis 实现
+│   │   └── graph/                     # 🆕 多 Agent 编排（Phase 3.5）
+│   │       ├── AgentState.java        # 图状态"黑板"（SpecialistResult record）
+│   │       ├── AgentNode.java         # 节点统一接口
+│   │       ├── SupervisorAgent.java   # LLM 零样本意图分类器
+│   │       ├── ResearchAgent.java     # 研究搜索专家（WebSearchTool）
+│   │       ├── MathAgent.java         # 数学计算专家（MathTool）
+│   │       ├── CodeAgent.java         # 代码执行专家（CodeExecutionTool）
+│   │       └── AgentGraph.java        # 多 Agent 编排器（Supervisor + Summarizer）
 │   ├── controller/
 │   │   ├── AgentController.java       # 🆕 Agent SSE 流式对话端点（/agent/chat/stream）
 │   │   ├── AiChatController.java      # AI 对话 REST API + SSE（含 RAG 对话）
@@ -454,15 +465,15 @@ private static final String SYSTEM_PROMPT =
 - RAG 检索增强生成（System Prompt 注入）
 - 知识库管理界面（卡片列表 + 文档表格 + 检索测试面板）
 - 启动时 MySQL → 向量索引自动重建
-- 212 个单元测试（含 RAG 知识库 + 两级回收站测试）
+- 371 个单元测试（含 RAG 知识库 + Agent 工具 + AgentEvent 事件测试 + 多 Agent 编排）
 
-### ⏳ Phase 3：AI Agent 智能体（进行中）
+### ✅ Phase 3：AI Agent 智能体（已完成）
 
-- ✅ **3.1 LangChain4j Tool Calling 基础框架** — 两阶段流式架构、AgentService/AgentController、结构化 SSE 事件协议（thinking/tool_call/tool_result/token/done/error）、238 个单元测试
-- 🔜 **3.2 内置工具** — WebSearchTool（Tavily API）、MathTool（exp4j）、CodeExecutionTool（JS ScriptEngine）
-- 🔜 **3.3 Agent 可视化推理过程** — Chat.vue 推理面板、工具调用展示
-- 🔜 **3.4 记忆系统** — MessageWindowChatMemory + Redis 持久化 + 对话摘要
-- 🔜 **3.5 多 Agent 编排** — 自定义 StateGraph：Supervisor → Specialist Agents → 结果聚合
+- ✅ **3.1 LangChain4j Tool Calling 基础框架** — 两阶段流式架构、AgentService/AgentController、结构化 SSE 事件协议（thinking/tool_call/tool_result/token/done/error）、33 个新测试
+- ✅ **3.2 内置工具** — WebSearchTool（Tavily API）、MathTool（exp4j 安全求值）、CodeExecutionTool（JS ScriptEngine 沙箱执行）、55 个新工具测试
+- ✅ **3.3 Agent 可视化推理过程** — Chat.vue 推理面板、Agent 开关、思考指示器、工具调用展示、18 个新测试
+- ✅ **3.4 记忆系统** — MessageWindowChatMemory + RedisChatMemoryStore 持久化 + 对话摘要、24 个新测试
+- ✅ **3.5 多 Agent 编排** — 自定义 StateGraph：SupervisorAgent 意图分类 + ResearchAgent/MathAgent/CodeAgent 专家 + AgentGraph 编排器 + Summarizer 聚合、36 个新测试
 
 ### 🔜 Phase 4：智能搜索与分析
 

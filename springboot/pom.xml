@@ -132,6 +132,14 @@
             <version>1.15.0</version>
         </dependency>
 
+        <!-- ==================== AI Agent 扩展（Phase 3）==================== -->
+        <!-- exp4j：安全的数学表达式求值引擎（MathTool 依赖） -->
+        <dependency>
+            <groupId>net.objecthunter</groupId>
+            <artifactId>exp4j</artifactId>
+            <version>0.4.8</version>
+        </dependency>
+
         <!-- ==================== RAG 知识库扩展（Phase 2）==================== -->
         <!-- Apache Tika：文档文本提取（支持 PDF/DOCX/DOC/TXT/MD 等格式） -->
         <dependency>

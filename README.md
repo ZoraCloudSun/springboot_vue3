@@ -1,4 +1,4 @@
-# Spring Boot + Vue3 全栈项目：认证系统 + AI 智能对话 + RAG 知识库
+# Spring Boot + Vue3 全栈项目：认证系统 + AI 智能对话 + RAG 知识库 + AI Agent 智能体
 
 > 前后端分离的全栈项目 | 2026
 
@@ -17,15 +17,16 @@
 
 ## 项目简介
 
-一套**生产级**前后端分离的全栈项目，集成了完整的用户认证闭环和基于大模型的 AI 智能对话系统，并支持 RAG（检索增强生成）知识库。
+一套**生产级**前后端分离的全栈项目，集成了完整的用户认证闭环、基于大模型的 AI 智能对话系统、RAG 知识库，以及具备工具调用和多 Agent 协作能力的 AI Agent 智能体。
 
 | 系统 | 说明 |
 |------|------|
 | 🔐 **用户认证系统** | 图形验证码、邮箱验证码注册、JWT 双 Token 鉴权、微信 OAuth 扫码登录、RBAC 角色权限控制、暴力破解防护 |
 | 🤖 **AI 智能对话** | DeepSeek-V3 大模型驱动、SSE 流式传输（打字机效果）、多轮上下文对话、Markdown + 代码高亮渲染、对话历史管理 |
 | 📚 **RAG 知识库** | 文档上传 → 文本提取 → 分块 → Embedding 向量化 → 检索增强生成，让 AI 基于用户自己的文档回答 |
+| 🧠 **AI Agent 智能体** | LangChain4j Tool Calling 框架，AI 可自主调用工具（网页搜索/数学计算/代码执行），推理可视化面板，多 Agent 协作（Supervisor → 专家 → 聚合），长期记忆摘要 |
 
-- **后端**：Spring Boot 3.5.11 + MyBatis-Plus 3.5.12 + MySQL + Redis + LangChain4j 1.15.0 + Apache Tika + JJWT 0.12
+- **后端**：Spring Boot 3.5.11 + MyBatis-Plus 3.5.12 + MySQL + Redis + LangChain4j 1.15.0 + Apache Tika + Tavily Search + exp4j + JJWT 0.12
 - **前端**：Vue 3.5 + Vite 8 + Element Plus 2.14 + Vue Router 4 + Axios + marked + highlight.js + DOMPurify
 
 ---
@@ -70,6 +71,20 @@
 | 🗂️ 知识库管理 | 卡片列表、文档表格、处理状态轮询、检索测试面板 |
 | ♻️ 两级回收站 | 知识库级回收站（全局）+ 文档级回收站（按知识库），支持恢复（自动重嵌入向量）和永久删除（清理文件/向量/DB） |
 
+### AI Agent 智能体
+
+| 功能 | 说明 |
+|------|------|
+| 🔧 工具调用 | LangChain4j Tool Calling 框架，AI 可自主判断并调用搜索/计算/代码执行等工具 |
+| 🌐 网页搜索 | WebSearchTool — Tavily Search API，搜索互联网获取实时信息 |
+| 🧮 数学计算 | MathTool — exp4j 安全表达式求值，支持三角函数/对数/阶乘等 30+ 运算 |
+| 💻 代码执行 | CodeExecutionTool — JDK ScriptEngine JS 沙箱，超时保护 + 输出截断（默认关闭） |
+| 🧠 多 Agent 协作 | SupervisorAgent 意图分类 → 专家 Agent 执行（Research/Math/Code）→ Summarizer 聚合结果 |
+| 📊 推理可视化 | 实时展示 Agent 思考过程、工具调用和结果，颜色编码面板，可折叠/展开 |
+| 💾 长期记忆 | Redis ChatMemory 24h 缓存 + LLM 异步摘要生成（每 10 条消息触发），对话超窗口后仍能"记住"早期内容 |
+| 🛡️ 三层降级 | 多 Agent → 标准 Agent → 直接回答，任何异常都不会导致无回答 |
+| 🔒 安全防护 | 推理循环最多 5 次迭代 + 10 次/分钟限流 + 18 种 Prompt Injection 检测 |
+
 ---
 
 ## 快速开始
@@ -87,6 +102,7 @@
 | Embedding API Key | — | RAG 向量嵌入（硅基流动推荐，国内直连） |
 | 163邮箱 | — | 发送验证码（可选，需开启 SMTP） |
 | 微信测试号 | — | 微信扫码登录（可选） |
+| Tavily API Key | — | Agent 网页搜索工具（可选，免费 1000 次/月） |
 
 ### 1. 克隆项目
 
@@ -245,7 +261,7 @@ npm run dev
 
 ```bash
 cd springboot
-mvn test   # 212 个测试，~10 秒
+mvn test   # 371 个测试，~20 秒
 ```
 
 #### 4.7 设置管理员
@@ -310,7 +326,7 @@ cd springboot
 mvn spring-boot:run
 # → http://localhost:8080
 
-# 运行单元测试（212 个测试，~10 秒）
+# 运行单元测试（371 个测试，~20 秒）
 mvn test
 ```
 
@@ -351,8 +367,9 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 │       ├── main/
 │       │   ├── java/com/zora/
 │       │   │   ├── AppStart.java            # 启动类（@MapperScan + @EnableScheduling）
-│       │   │   ├── config/                  # 配置类（12 个）
-│       │   │   │   ├── AiConfig.java        # LangChain4j 流式模型 + Embedding 配置
+│       │   │   ├── config/                  # 配置类（13 个）
+│       │   │   │   ├── AiConfig.java        # LangChain4j 流式 + 非流式双模型 配置
+│       │   │   │   ├── AgentConfig.java     # Agent 智能体配置（工具开关/Tavily/记忆）
 │       │   │   │   ├── RagConfig.java       # Embedding 模型 + SimpleEmbeddingStore Bean
 │       │   │   │   ├── Knife4jConfig.java   # OpenAPI 3 文档 + SecurityRequirement 注入
 │       │   │   │   ├── SecurityConfig.java  # Spring Security（仅 BCrypt，其余禁用）
@@ -364,9 +381,10 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 │       │   │   │   ├── WechatConfig.java    # 微信 OAuth 配置（@Value 注入）
 │       │   │   │   ├── CleanupTask.java     # 定时清理任务（@Scheduled）
 │       │   │   │   └── SwaggerCompatController.java  # Swagger JSON 兼容端点
-│       │   │   ├── controller/              # REST 控制器（3 个，共 32+ 端点）
+│       │   │   ├── controller/              # REST 控制器（4 个，共 33+ 端点）
 │       │   │   │   ├── UserController.java  # 用户认证（16 个端点）
 │       │   │   │   ├── AiChatController.java    # AI 对话 + SSE 流式 + RAG 对话
+│       │   │   │   ├── AgentController.java # Agent SSE 流式对话（/agent/chat/stream）
 │       │   │   │   └── RagController.java   # RAG 知识库 CRUD（16 个端点）
 │       │   │   ├── service/                 # 业务逻辑层
 │       │   │   │   ├── UserService.java     # 用户认证接口
@@ -409,6 +427,27 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 │       │   │       ├── ResponseUtil.java    # 统一响应体 { code, msg, data }
 │       │   │       ├── FileTypeUtil.java    # 文件类型检测 + 大小校验
 │       │   │       └── TextSplitterUtil.java # 递归文本分割器（800 字符/块）
+│       │   │   ├── agent/                   # AI Agent 智能体（Phase 3）
+│       │   │   │   ├── AgentService.java    # Agent 服务接口
+│       │   │   │   ├── event/
+│       │   │   │   │   └── AgentEvent.java  # 结构化 SSE 事件 record（6 种事件类型）
+│       │   │   │   ├── tool/
+│       │   │   │   │   ├── Tool.java        # 工具标记接口
+│       │   │   │   │   ├── WebSearchTool.java   # Tavily Search API 网页搜索
+│       │   │   │   │   ├── MathTool.java        # exp4j 安全数学表达式求值
+│       │   │   │   │   └── CodeExecutionTool.java # JS ScriptEngine 沙箱代码执行
+│       │   │   │   ├── memory/
+│       │   │   │   │   └── RedisChatMemoryStore.java # LangChain4j ChatMemoryStore Redis 实现
+│       │   │   │   ├── graph/               # 多 Agent 编排（Phase 3.5）
+│       │   │   │   │   ├── AgentState.java  # 图状态"黑板"（SpecialistResult record）
+│       │   │   │   │   ├── AgentNode.java   # 节点统一接口
+│       │   │   │   │   ├── SupervisorAgent.java # LLM 零样本意图分类器
+│       │   │   │   │   ├── ResearchAgent.java   # 研究搜索专家（WebSearchTool）
+│       │   │   │   │   ├── MathAgent.java       # 数学计算专家（MathTool）
+│       │   │   │   │   ├── CodeAgent.java       # 代码执行专家（CodeExecutionTool）
+│       │   │   │   │   └── AgentGraph.java      # 多 Agent 编排器（Supervisor+Summarizer）
+│       │   │   │   └── impl/
+│       │   │   │       └── AgentServiceImpl.java # 核心实现：两阶段流式 + ReAct + 多 Agent
 │       │   └── resources/
 │       │       ├── application.yml          # 应用配置（数据源/Redis/AI/微信/RAG）
 │       │       ├── application-example.yml  # 配置示例模板
@@ -417,7 +456,7 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 │       │           ├── DB_MIGRATION.sql     # 完整迁移（所有表）
 │       │           ├── V2__chat_tables.sql  # AI 对话表（conversation + message）
 │       │           └── V3__rag_tables.sql   # RAG 知识库/文档/块表
-│       └── test/                            # 单元测试（212 个，JUnit 5 + Mockito + MockMvc）
+│       └── test/                            # 单元测试（371 个，JUnit 5 + Mockito + MockMvc）
 │           ├── resources/
 │           │   └── application.yml          # 测试配置（H2 + 占位凭证）
 │           └── java/com/zora/
@@ -433,9 +472,25 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 │               │   ├── LoginInterceptorTest.java
 │               │   ├── RoleInterceptorTest.java
 │               │   └── SwaggerCompatControllerTest.java
-│               ├── controller/              # Controller 测试（2 个）
+│               ├── agent/                   # Agent 测试（6 个）
+│               │   ├── event/
+│               │   │   └── AgentEventTest.java
+│               │   ├── tool/
+│               │   │   ├── WebSearchToolTest.java
+│               │   │   ├── MathToolTest.java
+│               │   │   └── CodeExecutionToolTest.java
+│               │   ├── memory/
+│               │   │   └── RedisChatMemoryStoreTest.java
+│               │   ├── graph/               # 多 Agent 编排测试
+│               │   │   ├── AgentStateTest.java
+│               │   │   ├── SupervisorAgentTest.java
+│               │   │   └── AgentGraphTest.java
+│               │   └── impl/
+│               │       └── AgentServiceImplTest.java
+│               ├── controller/              # Controller 测试（3 个）
 │               │   ├── UserControllerTest.java
-│               │   └── RagControllerTest.java
+│               │   ├── RagControllerTest.java
+│               │   └── AgentControllerTest.java
 │               └── exception/               # 异常处理测试（1 个）
 │                   └── GlobalExceptionHandlerTest.java
 ├── web/frontend/                            # 前端 Vue 3 + Vite 工程
@@ -519,7 +574,7 @@ mysql -u root -p springboot_zyt -e "UPDATE user SET role = 'admin' WHERE email =
 | POST | `/ai/conversations/{id}/restore` | 恢复已删除对话 | ✅ |
 | DELETE | `/ai/conversations/{id}/permanent` | 永久删除对话 | ✅ |
 
-### AI Agent 智能体
+### AI Agent 智能体 API
 
 | 方法 | 路径 | 说明 | 认证 |
 |------|------|------|:----:|
@@ -727,7 +782,7 @@ RuntimeException
 
 ## 测试
 
-**框架**：JUnit 5 + Mockito + Spring MockMvc (standalone setup)，212 个测试，纯单元测试 — 无需 MySQL/Redis/网络，CI 就绪。
+**框架**：JUnit 5 + Mockito + Spring MockMvc (standalone setup)，371 个测试，纯单元测试 — 无需 MySQL/Redis/网络，CI 就绪。
 
 ```bash
 cd springboot
@@ -793,15 +848,15 @@ AI_MODEL_NAME=your-model-name
 - [x] 自实现余弦相似度向量存储
 - [x] RAG 检索增强生成 + 知识库管理界面
 - [x] 启动时向量索引自动重建
-- [x] 212 个单元测试（含 RAG 知识库 + 两级回收站测试）
+- [x] 212 个单元测试（含 RAG 知识库 + Agent 工具 + AgentEvent 事件测试）
 
-### 🔜 Phase 3：AI Agent 智能体（进行中）
+### ✅ Phase 3：AI Agent 智能体（已完成）
 
-- [x] **3.1 LangChain4j Tool Calling 基础框架** — 两阶段流式架构（非流式推理 + 流式输出）、AgentService/AgentController、结构化 SSE 事件协议（thinking/tool_call/tool_result/token/done/error）、238 个单元测试
-- [ ] **3.2 内置工具** — WebSearchTool（Tavily API）、MathTool（exp4j）、CodeExecutionTool（JS ScriptEngine）
-- [ ] **3.3 Agent 可视化推理过程** — Chat.vue 推理面板、工具调用展示
-- [ ] **3.4 记忆系统** — MessageWindowChatMemory + Redis 持久化 + 对话摘要
-- [ ] **3.5 多 Agent 编排** — 自定义 StateGraph：Supervisor → Specialist Agents → 结果聚合
+- [x] **3.1 LangChain4j Tool Calling 基础框架** — 两阶段流式架构（非流式推理 + 流式输出）、AgentService/AgentController、结构化 SSE 事件协议（thinking/tool_call/tool_result/token/done/error）、33 个新测试
+- [x] **3.2 内置工具** — WebSearchTool（Tavily API）、MathTool（exp4j 安全求值）、CodeExecutionTool（JS ScriptEngine 沙箱）、55 个新工具测试
+- [x] **3.3 Agent 可视化推理过程** — Chat.vue 推理面板、Agent 开关、思考指示器、工具调用展示、18 个新测试
+- [x] **3.4 记忆系统** — MessageWindowChatMemory + RedisChatMemoryStore + 对话摘要、24 个新测试
+- [x] **3.5 多 Agent 编排** — SupervisorAgent 意图分类 + ResearchAgent/MathAgent/CodeAgent 专家 + AgentGraph 编排器 + Summarizer 聚合 + 36 个新测试
 
 ### 🔜 Phase 4：智能搜索与分析
 

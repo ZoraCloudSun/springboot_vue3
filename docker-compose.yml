@@ -22,6 +22,7 @@ services:
       - ./springboot/src/main/resources/db/migration/V4__agent_tables.sql:/docker-entrypoint-initdb.d/04-agent-tables.sql:ro
       - ./springboot/src/main/resources/db/migration/V5__search_index.sql:/docker-entrypoint-initdb.d/05-search-index.sql:ro
       - ./springboot/src/main/resources/db/migration/V6__user_action_log.sql:/docker-entrypoint-initdb.d/06-user-action-log.sql:ro
+      - ./springboot/src/main/resources/db/migration/V7__multi_model.sql:/docker-entrypoint-initdb.d/07-multi-model.sql:ro
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci

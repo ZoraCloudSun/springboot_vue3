@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
+import com.zora.config.ModelRegistry;
 import com.zora.service.AiChatService;
 import com.zora.exception.BadRequestException;
 import com.zora.utils.ResponseUtil;
@@ -31,6 +32,9 @@ public class AiChatController {
 
     @Resource
     private AiChatService chatService;
+
+    @Resource
+    private ModelRegistry modelRegistry;
 
     @Operation(summary = "SSE 流式对话", description = "发送消息并以 SSE (text/event-stream) 流式返回 AI 回复。" +
             "每个 token 通过 SSE data 事件逐字推送，支持传入 conversationId 继续已有对话，不传则自动创建新对话。" +
@@ -223,5 +227,16 @@ public class AiChatController {
         }
 
         return chatService.streamChatWithRag(email, message, conversationId, knowledgeBaseId);
+    }
+
+    // ==================== 模型管理（Phase 5.3） ====================
+
+    @Operation(summary = "获取可用模型列表", description = "返回所有已配置的 AI 模型元数据（provider + modelId + name），用于前端模型选择器")
+    @GetMapping("/models")
+    public ResponseUtil listModels() {
+        List<Map<String, String>> models = modelRegistry.listModels().stream()
+                .map(m -> Map.of("provider", m.provider(), "modelId", m.modelId(), "name", m.name()))
+                .toList();
+        return ResponseUtil.success(models);
     }
 }

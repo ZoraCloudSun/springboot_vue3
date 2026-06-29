@@ -1,0 +1,195 @@
+server:
+  port: 8080
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB # 单个文件最大 10MB
+      max-request-size: 10MB # 单次请求最大 10MB
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:springboot_zyt}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+  # 网易163邮箱配置：用于发送注册验证码
+  # 使用前请将 username 替换为你的163邮箱，password 替换为SMTP授权码（非登录密码）
+  mail:
+    host: smtp.163.com
+    port: 465
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    protocol: smtps
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          starttls:
+            enable: true
+            required: true
+
+mybatis-plus:
+  configuration:
+    # 使用 Slf4j 适配器（替代 StdOutImpl），纳入 Spring Boot 统一日志体系
+    # 开发时如需查看 SQL，设置 logging.level.com.zora.mapper=DEBUG 即可
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    map-underscore-to-camel-case: true
+  type-aliases-package: com.zora.entity
+
+logging:
+  level:
+    # MyBatis Mapper SQL 日志：开发环境可改为 DEBUG，生产环境用 WARN
+    "[com.zora.mapper]": WARN
+    # Spring 框架日志
+    root: INFO
+
+jwt:
+  secret: ${JWT_SECRET:zyt-jwt-secret-key-2026-springboot-login-system}
+  access-token-expiration: 1800000
+  refresh-token-expiration: 604800000
+
+# 微信开放平台/测试号配置
+# 测试号获取: https://mp.weixin.qq.com/debug/cgi-bin/sandbox?t=sandbox/login
+# 内网穿透: ngrok http 8080 → 将 https://xxxx.ngrok-free.app 填入测试号回调域名
+wechat:
+  app-id: ${WECHAT_APP_ID:}
+  app-secret: ${WECHAT_APP_SECRET:}
+  callback-url: ${WECHAT_CALLBACK_URL:}
+
+# Knife4j / Swagger API 文档配置
+# 启动后访问 http://localhost:8080/doc.html
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: default
+      paths-to-match:
+        - /user/**
+        - /ai/**
+        - /rag/**
+        - /agent/**
+        - /search/**
+        - /statistics/**
+        - /recommend/**
+      packages-to-scan: com.zora.controller
+
+knife4j:
+  enable: true
+  setting:
+    language: zh-CN
+    enable-swagger-models: true
+    enable-document-manage: true
+
+# ==================== AI 扩展配置（Phase 1）====================
+# 使用 LangChain4j + DeepSeek，兼容 OpenAI API 格式
+# 环境变量：
+#   AI_API_KEY          - DeepSeek API 密钥（必填）
+#   AI_BASE_URL         - API 基础 URL（默认 https://api.deepseek.com/v1）
+#   AI_MODEL_NAME       - 模型名称（默认 deepseek-chat）
+#   AI_TEMPERATURE      - 生成温度 0.0~2.0（默认 0.7）
+#   AI_MAX_TOKENS       - 最大输出 Token 数（默认 4096）
+#   AI_TIMEOUT_SECONDS  - API 超时秒数（默认 120）
+ai:
+  default-provider: deepseek
+  default-model: deepseek-chat
+  temperature: ${AI_TEMPERATURE:0.7}
+  max-tokens: ${AI_MAX_TOKENS:4096}
+  timeout-seconds: ${AI_TIMEOUT_SECONDS:120}
+  # 多模型提供商配置（Phase 5.3）
+  # 每个 provider 下可配置多个 model，前端可切换
+  providers:
+    deepseek:
+      type: openai-compatible
+      base-url: ${AI_BASE_URL:https://api.deepseek.com/v1}
+      api-key: ${AI_API_KEY:}
+      models:
+        - id: deepseek-chat
+          name: DeepSeek-V3
+        - id: deepseek-reasoner
+          name: DeepSeek-R1
+    # 通义千问 — 取消注释并填入 API Key 即可启用
+    # qwen:
+    #   type: openai-compatible
+    #   base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    #   api-key: ${QWEN_API_KEY:}
+    #   models:
+    #     - id: qwen-plus
+    #       name: 通义千问 Plus
+    #     - id: qwen-max
+    #       name: 通义千问 Max
+    # OpenAI — 取消注释并填入 API Key 即可启用
+    # openai:
+    #   type: openai-compatible
+    #   base-url: https://api.openai.com/v1
+    #   api-key: ${OPENAI_API_KEY:}
+    #   models:
+    #     - id: gpt-4o
+    #       name: GPT-4o
+
+# ==================== RAG 知识库配置（Phase 2）====================
+# 嵌入模型：使用 OpenAI 兼容的 Embedding API（DeepSeek 不提供公开的 Embedding 端点）
+# 环境变量：
+#   AI_EMBEDDING_API_KEY   - 嵌入模型 API 密钥（必填，可使用 OpenAI 或其他兼容服务）
+#   AI_EMBEDDING_BASE_URL  - 嵌入 API 基础 URL（默认 https://api.openai.com/v1）
+#   AI_EMBEDDING_MODEL     - 嵌入模型名称（默认 text-embedding-3-small）
+rag:
+  embedding:
+    api-key: ${AI_EMBEDDING_API_KEY:}
+    base-url: ${AI_EMBEDDING_BASE_URL:https://api.openai.com/v1}
+    model-name: ${AI_EMBEDDING_MODEL:text-embedding-3-small}
+  # 文档上传与处理配置
+  document:
+    max-size: 10485760 # 最大文件大小 10MB
+    upload-dir: ${RAG_UPLOAD_DIR:./uploads/rag} # 文件上传目录
+    max-chunk-size: 1200 # 文本块最大字符数（BGE 模型 512 token 限制，中文约 1.5~2 token/字）
+    max-chunk-overlap: 150 # 文本块重叠字符数
+    max-retrieve-results: 5 # 检索时返回的最大相关块数
+    min-relevance-score: 0.3 # 检索相关性最低阈值
+
+# ==================== AI Agent 智能体配置（Phase 3）====================
+# 使用 LangChain4j AiServices + @Tool 注解实现工具调用和 Agent 推理
+# 环境变量：
+#   AGENT_TOOL_WEB_SEARCH   - 是否启用网页搜索工具（默认 true）
+#   AGENT_TOOL_MATH         - 是否启用数学计算工具（默认 true）
+#   AGENT_TOOL_CODE_EXEC    - 是否启用代码执行工具（默认 false，安全考量）
+#   TAVILY_API_KEY          - Tavily 搜索 API 密钥（必填，网页搜索工具需要）
+#   AGENT_MULTI_AGENT       - 是否启用多 Agent 协作（默认 false，Phase 3.5）
+agent:
+  # 工具开关
+  tools:
+    web-search:
+      enabled: ${AGENT_TOOL_WEB_SEARCH:true}
+    math:
+      enabled: ${AGENT_TOOL_MATH:true}
+    code-execution:
+      enabled: ${AGENT_TOOL_CODE_EXEC:false}  # 默认关闭（安全考量）
+      timeout-seconds: 5
+      max-output-length: 10000
+  # Tavily 搜索 API（Phase 3.2 网页搜索工具）
+  tavily:
+    api-key: ${TAVILY_API_KEY:}
+    base-url: https://api.tavily.com/search
+    timeout-seconds: 15
+  # 多智能体编排（Phase 3.5）
+  multi-agent:
+    enabled: ${AGENT_MULTI_AGENT:false}
+    max-specialist-calls: 3
+  # 记忆系统（Phase 3.4）
+  memory:
+    window-size: 20
+    summary-trigger-count: 10
+    summary-max-length: 300

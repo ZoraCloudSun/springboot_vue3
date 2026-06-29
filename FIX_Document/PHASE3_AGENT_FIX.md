@@ -20,7 +20,7 @@
 | P3-7 | SSE 事件全部同时到达（推理面板静态、回答秒蹦出） | 🔴 高 | ✅ 已修复 | `Flux.subscribeOn(Schedulers.boundedElastic())` 解除 Netty 线程阻塞 |
 | P3-8 | 推理面板与消息气泡分离（UX 不直观） | 🟡 低 | ✅ 已修复 | 推理步骤移入 AI 消息气泡内部，支持展开/收起 |
 | P3-9 | LaTeX 数学公式未渲染 | 🟠 中 | ✅ 已修复 | 新增 KaTeX + marked 数学扩展 |
-| P3-10 | CJK 字符旁的 `**加粗**` 不生效 | 🟠 中 | ✅ 已修复 | `fixCjkBold()` 在 CJK 与 `**` 间插入零宽空格 |
+| P3-10 | CJK 字符旁的 `**加粗**` 不生效 | 🟠 中 | ✅ 已修复 | `fixCjkBold()` 将含 CJK 的 `**...**` 直接转为 `<strong>` 标签 |
 | P3-11 | 发送后输入框高度不回缩 | 🟡 低 | ✅ 已修复 | 发送后 `nextTick` 重置 textarea 高度 |
 | P3-12 | 推理完成后图标仍旋转 | 🟡 低 | ✅ 已修复 | `.reasoning-done` 类禁用动画 |
 | P3-13 | Docker 部署 Agent 不可用（405） | 🔴 高 | ✅ 已修复 | nginx.conf 添加 `/agent/` location + docker-compose 补充环境变量和迁移 |
@@ -523,62 +523,40 @@ AI 返回的 LaTeX 数学公式（如 `\begin{aligned}...\end{aligned}`）以原
 | `符合**加粗**的条件` | 符合**加粗**的条件 | 符合**加粗**的条件（原样） |
 | `核心输出方式：**蓄力重击 → 释放"冰冻激光"**，类似...` | 加粗生效 | **不加粗**（`**` 作为字面量显示） |
 
-### 根因分析（两层）
+### 根因分析
 
-**第一层 — GFM left-flanking delimiter run 规则**：
+Marked v18 遵循 GFM 规范，要求 opening `**` 前面必须是空白或 ASCII 标点。CJK 字符不在此列，导致 `**` 不被识别为加粗分隔符。
 
-Marked v18 遵循 GFM 规范，要求 opening `**` 前面必须是空白或 ASCII 标点。CJK 字符（中文、全角标点）不在此列，导致 `**` 不被识别为加粗起始符。
+**初版修复（ZWS 注入）**：在 CJK 字符与 `**` 之间插入零宽空格 (U+200B)，试图绕过 GFM 检测。但 U+200B 在 Unicode 中属于 Space Separator 类别：
+- 在 opening `**` 前插入 ZWS → ✅ 有效（满足 left-flanking 的前置条件）
+- 在 closing `**` 后插入 ZWS → ❌ 无效（破坏 right-flanking 要求）
+- 甚至在 opening `**` 前插入 ZWS 的方案，在 `"`（U+201C 弯引号）等 Unicode 标点参与时也不稳定
 
-**第二层 — 第二个 replace 画蛇添足（本次修复的根因）**：
+**结论**：ZWS 方案在 GFM 规范下本质不可靠，存在大量边界情况。
 
-初版 `fixCjkBold()` 有两个 replace：
-1. 在 CJK 字符 **后面**的 `**` 前插入 ZWS → 修复 opening delimiter ✅
-2. 在 `**` **后面**的 CJK 字符前插入 ZWS → 修复 closing delimiter ❌（反而破坏了它）
+### 修复实现（第二次修复）
 
-第二个 replace 在 **closing `**` 之后**插入零宽空格（U+200B），但 **U+200B 属于 Unicode 类别 "Zs"（Space Separator）**。GFM 规范要求 closing delimiter 必须是 left-flanking——前面不能是空格字符。ZWS 虽然是"零宽"，但 Unicode 属性上是空格，导致 marked 把 closing `**` 当成普通文本。
-
-字符级分析：
-
-```
-原始: ...光" * * ff0c(，)...
-      第二个 replace 在 closing ** 后插入 ZWS →
-修复后: ...光" * * 200b(​) ff0c(，)...
-                 ↑ ZWS 破坏了 closing ** 的 left-flanking 要求
-```
-
-验证对照：
-
-| 方案 | `**蓄力重击 → "冰冻激光"**，类似...` | 结果 |
-| :--- | :--- | :---: |
-| 不用 fixCjkBold | 原始文本直接给 marked | ✅ 加粗正常 |
-| 只用第一个 replace | ZWS 只在 opening `**` 前 | ✅ 加粗正常 |
-| 只用第二个 replace | ZWS 在 closing `**` 后 | ❌ 加粗失效 |
-| 两个都用（旧版） | ZWS 两头都有 | ❌ 加粗失效 |
-
-### 修复实现
-
-删除第二个 replace，只保留第一个（在 opening `**` 前插入 ZWS 帮助 marked 识别 CJK 旁的加粗起始符）：
+放弃 ZWS 注入方案，转而将含 CJK 的 `**...**` 直接预处理为 `<strong>` HTML 标签，完全绕过 marked 的 GFM 解析器：
 
 **文件**：[Chat.vue](web/frontend/src/views/Chat.vue)
 
 ```javascript
 function fixCjkBold(text) {
-  // CJK 字符范围：一-鿿 (基本) + 　-〿 (标点) + ＀-￯ (全角)
-  // 只在 opening ** 前插入零宽空格，帮助 marked 识别 CJK 旁的 ** 为加粗起始符。
-  // ⚠️ 不能在 closing ** 后插入 ZWS——U+200B 属于 Unicode Space Separator，
-  //    会破坏 GFM 的 left-flanking delimiter run 要求，导致加粗失效。
-  return text.replace(/([一-鿿　-〿＀-￯])(\*\*)/g, '$1​$2')
+  // GFM 规范下 CJK 字符旁 ** 的分隔符检测不可靠，
+  // 直接将含 CJK 的 **...** 转为 <strong> 标签，绕过 marked 的 GFM 解析
+  return text.replace(/\*\*(.+?)\*\*/g, (match, content) => {
+    if (/[一-鿿]/.test(content)) {
+      return '<strong>' + content + '</strong>'
+    }
+    return match  // 纯 ASCII 的 **...** 保持原样，走 marked 正常流程
+  })
 }
 ```
 
-### GFM delimiter run 规则（便于理解）
-
-| delimiter 类型 | 要求 | 影响 |
-| :--- | :--- | :--- |
-| opening `**` | right-flanking（后面不能是空格） | CJK 字符在前导致不被识别 → **第一个 replace 在前插入 ZWS** ✅ |
-| closing `**` | left-flanking（前面不能是空格） | ZWS 在后导致不被识别 → **不能在 closing 后插入 ZWS** ❌ |
-
-**核心教训**：零宽空格 (U+200B) 虽然视觉上不可见，但在 Unicode 规范中属于 Space Separator 类别，会被 GFM 解析器当作空格处理。它只能在 opening delimiter **前面**使用（前加 ZWS 不破坏 right-flanking），不能在 closing delimiter **后面**使用（后加 ZWS 破坏 left-flanking）。
+**设计要点**：
+- 仅内容包含汉字时才转换，纯 ASCII 的 `**hello**` 不受影响
+- `<strong>` 是标准 HTML 标签，marked 和 DOMPurify 均原生支持
+- 处理时机在 marked.parse() 之前，生成的 `<strong>` 直接传入 marked 作为 inline HTML 放行
 
 ---
 

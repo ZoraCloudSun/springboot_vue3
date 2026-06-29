@@ -287,39 +287,6 @@
           <h1 class="header-title">{{ currentTitle || '新对话' }}</h1>
         </div>
         <div class="header-right">
-          <!-- Phase 3.3: Agent 智能体开关 -->
-          <el-switch
-            v-model="agentMode"
-            size="small"
-            active-text="Agent"
-            class="mode-switch"
-            style="margin-right: 8px"
-          />
-          <!-- Phase 2: RAG 知识库选择器 -->
-          <template v-if="knowledgeBases.length > 0">
-            <el-switch
-              v-model="ragEnabled"
-              size="small"
-              active-text="RAG"
-              class="mode-switch"
-              style="margin-right: 8px"
-            />
-            <el-select
-              v-model="selectedKbId"
-              placeholder="选择知识库"
-              size="small"
-              :disabled="!ragEnabled"
-              style="width: 140px; margin-right: 8px"
-              clearable
-            >
-              <el-option
-                v-for="kb in knowledgeBases"
-                :key="kb.id"
-                :label="kb.name"
-                :value="kb.id"
-              />
-            </el-select>
-          </template>
           <span class="header-badge">DeepSeek</span>
         </div>
       </header>
@@ -355,6 +322,7 @@
           :key="index"
           class="message-row"
           :class="msg.role"
+          :data-msg-idx="msg.role === 'user' ? index : undefined"
         >
           <div class="message-body">
             <div class="message-sender">
@@ -521,6 +489,58 @@
             ></div>
           </div>
         </div>
+
+        <!-- 滚动到底部按钮（离开底部时显示，流式中带加载动画） -->
+        <Transition name="scroll-btn">
+          <button
+            v-if="showScrollBtn"
+            class="scroll-bottom-btn"
+            :class="{ streaming: isStreaming }"
+            @click="handleScrollToBottom"
+          >
+            <svg
+              class="scroll-btn-ring"
+              :class="{ spinning: isStreaming }"
+              viewBox="0 0 36 36"
+            >
+              <circle cx="18" cy="18" r="15" fill="none" stroke="#e0ddd6" stroke-width="2" />
+              <circle
+                class="ring-progress"
+                cx="18" cy="18" r="15" fill="none" stroke="#3b82f6" stroke-width="2"
+                stroke-linecap="round"
+                stroke-dasharray="94.2" stroke-dashoffset="94.2"
+              />
+            </svg>
+            <el-icon :size="16" class="scroll-btn-icon"><ArrowDown /></el-icon>
+          </button>
+        </Transition>
+      </div>
+
+      <!-- 右侧对话时间轴（独立于消息滚动区，始终可见） -->
+      <div
+        class="conv-timeline"
+        :class="{ expanded: timelineHovered }"
+        @mouseenter="timelineHovered = true"
+        @mouseleave="timelineHovered = false"
+      >
+        <div class="timeline-track">
+          <div
+            v-for="(item, idx) in userMessageAnchors"
+            :key="idx"
+            class="timeline-segment"
+            @click="scrollToUserMessage(item.index)"
+          >
+            <div class="timeline-bar"></div>
+            <Transition name="timeline-tip">
+              <div v-if="timelineHovered" class="timeline-tooltip">
+                {{ truncateText(item.preview, 40) }}
+              </div>
+            </Transition>
+          </div>
+          <div v-if="userMessageAnchors.length === 0" class="timeline-empty">
+            <div class="timeline-bar placeholder"></div>
+          </div>
+        </div>
       </div>
 
       <!-- 输入区域 -->
@@ -536,46 +556,114 @@
             rows="1"
             ref="textareaRef"
           ></textarea>
-          <div class="input-bottom">
-            <span class="input-hint">
-              <span v-if="inputMessage.length > MAX_MESSAGE_LENGTH * 0.8"
-                    :class="{ 'char-warn': inputMessage.length > MAX_MESSAGE_LENGTH }">
-                {{ inputMessage.length }}/{{ MAX_MESSAGE_LENGTH }}
+          <!-- 药丸按钮 + 发送（千问风格：功能按钮在输入框内部） -->
+          <div class="input-actions">
+            <div class="input-pills">
+              <!-- 上传按钮（+ 号，点击展开选项） -->
+              <div class="upload-btn-wrap">
+                <button
+                  class="pill-btn pill-upload"
+                  :class="{ open: uploadMenuOpen }"
+                  title="上传文件"
+                  @click.stop="uploadMenuOpen = !uploadMenuOpen"
+                >
+                  <el-icon :size="14"><Plus /></el-icon>
+                </button>
+                <Transition name="upload-menu">
+                  <div v-if="uploadMenuOpen" class="upload-dropdown">
+                    <button class="upload-dropdown-item" @click.stop="handleUpload('image')">
+                      <el-icon :size="14"><Picture /></el-icon>
+                      <span>上传图片</span>
+                    </button>
+                    <button class="upload-dropdown-item" @click.stop="handleUpload('document')">
+                      <el-icon :size="14"><Document /></el-icon>
+                      <span>上传文档</span>
+                    </button>
+                  </div>
+                </Transition>
+              </div>
+              <button
+                class="pill-btn"
+                :class="{ active: agentMode }"
+                @click="agentMode = !agentMode"
+                title="Agent 智能体：工具调用 + 推理"
+              >
+                <el-icon :size="14"><Cpu /></el-icon>
+                <span>Agent</span>
+              </button>
+              <button
+                class="pill-btn"
+                :class="{ active: ragEnabled }"
+                @click="ragEnabled = !ragEnabled"
+                title="RAG 知识库：基于文档增强回答"
+              >
+                <el-icon :size="14"><Collection /></el-icon>
+                <span>RAG</span>
+              </button>
+              <!-- RAG 知识库选择器（RAG 开启时显示） -->
+              <el-select
+                v-if="ragEnabled && knowledgeBases.length > 0"
+                v-model="selectedKbId"
+                placeholder="选择知识库"
+                size="small"
+                style="width: 130px"
+                clearable
+              >
+                <el-option
+                  v-for="kb in knowledgeBases"
+                  :key="kb.id"
+                  :label="kb.name"
+                  :value="kb.id"
+                />
+              </el-select>
+            </div>
+            <div class="input-send-area">
+              <span class="input-hint">
+                <span v-if="inputMessage.length > MAX_MESSAGE_LENGTH * 0.8"
+                      :class="{ 'char-warn': inputMessage.length > MAX_MESSAGE_LENGTH }">
+                  {{ inputMessage.length }}/{{ MAX_MESSAGE_LENGTH }}
+                </span>
+                <span v-else>Enter 发送，Shift+Enter 换行</span>
               </span>
-              <span v-else>Enter 发送，Shift+Enter 换行</span>
-            </span>
-            <button
-              v-if="!isStreaming"
-              class="send-btn"
-              :class="{ active: inputMessage.trim() }"
-              :disabled="!inputMessage.trim()"
-              @click="handleSend"
-            >
-              <el-icon :size="16"><Promotion /></el-icon>
-            </button>
-            <button
-              v-else
-              class="stop-btn"
-              @click="handleStop"
-            >
-              <el-icon :size="14"><VideoPause /></el-icon>
-              <span>停止</span>
-            </button>
+              <button
+                v-if="!isStreaming"
+                class="send-btn"
+                :class="{ active: inputMessage.trim() }"
+                :disabled="!inputMessage.trim()"
+                @click="handleSend"
+              >
+                <el-icon :size="16"><Promotion /></el-icon>
+              </button>
+              <button
+                v-else
+                class="stop-btn"
+                @click="handleStop"
+              >
+                <el-icon :size="14"><VideoPause /></el-icon>
+                <span>停止</span>
+              </button>
+            </div>
           </div>
         </div>
+        <!-- 状态提示（保留在输入框下方） -->
         <div class="input-footer">
           <template v-if="agentMode">
-            <el-icon :size="12" color="#1677ff"><Cpu /></el-icon>
-            Agent 智能体已启用（工具调用 + 推理） |
+            <span class="footer-status">
+              <el-icon :size="12" color="#1677ff"><Cpu /></el-icon>
+              Agent 智能体已启用（工具调用 + 推理）
+            </span>
           </template>
           <template v-if="ragEnabled && selectedKbId">
-            <el-icon :size="12" color="#67c23a"><CircleCheckFilled /></el-icon>
-            已从知识库检索上下文增强回答 |
+            <span class="footer-status">
+              <el-icon :size="12" color="#67c23a"><CircleCheckFilled /></el-icon>
+              已从知识库检索上下文增强回答
+            </span>
           </template>
-          AI 由 DeepSeek 大模型驱动，内容仅供参考
+          <span class="input-disclaimer">AI 由 DeepSeek 大模型驱动，内容仅供参考</span>
         </div>
       </div>
     </main>
+
   </div>
 
   <!-- "..." 右键菜单（Teleport 到 body，使用 fixed 定位，向下右弹出） -->
@@ -604,12 +692,14 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Fold, Expand, Delete, HomeFilled, ChatDotRound,
+  Picture, Document,
   CopyDocument, Promotion, VideoPause, Search, ChatLineRound,
   UserFilled, RefreshLeft, Collection, CircleCheckFilled,
   // Phase 3.3: Agent 推理面板图标
   Cpu, Loading, Tools, CircleCheck, ArrowUp, ArrowDown, MoreFilled, List,
   // Phase 4: 仪表盘 + 推荐图标
   DataAnalysis,
+  Upload,
 } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
@@ -643,6 +733,22 @@ const isStreaming = ref(false)
 const streamingContent = ref('')
 const searchQuery = ref('')
 let abortController = null
+
+// ==================== 上传菜单状态 ====================
+const uploadMenuOpen = ref(false)
+
+const handleUpload = (type) => {
+  uploadMenuOpen.value = false
+  const label = type === 'image' ? '上传图片' : '上传文档'
+  ElMessage.info(`${label}功能即将上线`)
+}
+
+// 点击外部关闭上传菜单
+const handleUploadClickOutside = (e) => {
+  if (!e.target.closest('.upload-btn-wrap')) {
+    uploadMenuOpen.value = false
+  }
+}
 
 // ==================== Phase 2: RAG 知识库状态 ====================
 const ragEnabled = ref(false)
@@ -916,11 +1022,14 @@ function escapeHtml(str) {
  * 且零宽空格在渲染时不可见，不影响显示效果。
  */
 function fixCjkBold(text) {
-  // CJK 字符范围：一-鿿 (基本) + 　-〿 (标点) + ＀-￯ (全角)
-  // 只在 opening ** 前插入零宽空格，帮助 marked 识别 CJK 旁的 ** 为加粗起始符。
-  // ⚠️ 不能在 closing ** 后插入 ZWS——U+200B 属于 Unicode Space Separator，
-  //    会破坏 GFM 的 left-flanking delimiter run 要求，导致加粗失效。
-  return text.replace(/([一-鿿　-〿＀-￯])(\*\*)/g, '$1​$2')
+  // GFM 规范下 CJK 字符旁 ** 的分隔符检测不可靠，
+  // 直接将含 CJK 的 **...** 转为 <strong> 标签，绕过 marked 的 GFM 解析
+  return text.replace(/\*\*(.+?)\*\*/g, (match, content) => {
+    if (/[一-鿿]/.test(content)) {
+      return '<strong>' + content + '</strong>'
+    }
+    return match
+  })
 }
 
 const renderMarkdown = (text) => {
@@ -1106,7 +1215,7 @@ const handleSend = async (e) => {
       (token) => {
         if (answerRevealed) {
           streamingContent.value += token
-          scrollToBottom()
+          if (isNearBottom()) scrollToBottom()
         } else {
           pendingTokens.push(token)
         }
@@ -1142,7 +1251,7 @@ const handleSend = async (e) => {
   abortController = callChat(
     (token) => {
       streamingContent.value += token
-      scrollToBottom()
+      if (isNearBottom()) scrollToBottom()
     },
     async () => {
       if (streamingContent.value) {
@@ -1159,7 +1268,7 @@ const handleSend = async (e) => {
       } else {
         await loadConversations()
       }
-      await scrollToBottom()
+      if (isNearBottom()) await scrollToBottom()
     },
     (error) => {
       ElMessage.error(error.message || 'AI 请求失败')
@@ -1198,14 +1307,82 @@ const handleRecommendedQuestion = (text) => {
   handleSend()
 }
 
-// ==================== 辅助功能 ====================
+// ==================== 右侧时间轴（电量格导航） ====================
 
-const scrollToBottom = async () => {
-  await nextTick()
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+const timelineHovered = ref(false)
+
+/** 当前对话中所有用户消息的索引和预览文本 */
+const userMessageAnchors = computed(() => {
+  const result = []
+  messages.value.forEach((msg, index) => {
+    if (msg.role === 'user') {
+      result.push({
+        index,
+        preview: msg.content || '',
+      })
+    }
+  })
+  return result
+})
+
+/** 截断文本用于 tooltip 显示 */
+const truncateText = (text, maxLen) => {
+  if (!text) return ''
+  return text.length > maxLen ? text.substring(0, maxLen) + '…' : text
+}
+
+/** 点击电量格 → 滚动到对应消息位置 */
+const scrollToUserMessage = (messageIndex) => {
+  const container = messagesContainer.value
+  if (!container) return
+  // 通过 data 属性定位用户消息元素
+  const el = container.querySelector(`[data-msg-idx="${messageIndex}"]`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // 高亮闪烁效果
+    el.classList.add('msg-flash')
+    setTimeout(() => el.classList.remove('msg-flash'), 1200)
   }
 }
+
+// ==================== 滚动到底部按钮 ====================
+
+const showScrollBtn = ref(false)
+
+/** 用户是否在底部附近（≤100px），用于判断是否自动跟底 */
+const isNearBottom = () => {
+  const el = messagesContainer.value
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= 100
+}
+
+/** 检测是否离开底部超过 100px，控制 ↓ 按钮显隐 */
+const checkScrollPosition = () => {
+  const el = messagesContainer.value
+  if (!el) return
+  const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+  showScrollBtn.value = distFromBottom > 100
+}
+
+// ==================== 辅助功能 ====================
+
+/**
+ * 滚动到底部
+ * @param smooth - true=平滑动画（用户点击按钮），false=瞬间跳转（流式自动跟底）
+ */
+const scrollToBottom = async (smooth = false) => {
+  await nextTick()
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTo({
+      top: messagesContainer.value.scrollHeight,
+      behavior: smooth ? 'smooth' : 'instant',
+    })
+    if (smooth) showScrollBtn.value = false
+  }
+}
+
+/** 点击 ↓ 按钮 → 平滑滚到底部 */
+const handleScrollToBottom = () => scrollToBottom(true)
 
 /**
  * 启动推理步骤定时渲染器
@@ -1224,7 +1401,7 @@ function startStepTimer() {
       // 还有推理步骤没渲染 → 弹出一个，Vue 触发动画
       const step = pendingSteps.shift()
       reasoningSteps.value.push(step)
-      scrollToBottom()
+      if (isNearBottom()) scrollToBottom()
     } else if (streamEnded) {
       // 流已结束 + 推理队列已空 → flush token → push 消息 → 收尾
       clearInterval(stepTimer)
@@ -1247,7 +1424,7 @@ function startStepTimer() {
       streamingContent.value = ''
       isStreaming.value = false
       abortController = null
-      scrollToBottom()
+      if (isNearBottom()) scrollToBottom()
       loadConversations().then(() => {
         if (!currentConversationId.value && conversations.value.length > 0) {
           currentConversationId.value = conversations.value[0].id
@@ -1277,7 +1454,7 @@ function stopStepTimer() {
       pendingTokens = []
     }
   }
-  scrollToBottom()
+  if (isNearBottom()) scrollToBottom()
 }
 
 const copyContent = (text) => {
@@ -1343,16 +1520,28 @@ const autoResize = () => {
   el.style.height = Math.min(el.scrollHeight, 160) + 'px'
 }
 
-watch(() => streamingContent.value, () => scrollToBottom())
+// 流式生成时：仅当用户在底部才自动跟底，否则不打扰用户阅读历史
+watch(() => streamingContent.value, () => {
+  if (isNearBottom()) scrollToBottom()
+  checkScrollPosition()
+})
 
 onMounted(() => {
   loadConversations(); loadKbs(); loadDeletedConversations()
-  // 点击侧边栏外部时关闭 "..." 右键菜单
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('click', handleUploadClickOutside)
+  // 滚动检测（↓ 按钮显隐）
+  if (messagesContainer.value) {
+    messagesContainer.value.addEventListener('scroll', checkScrollPosition, { passive: true })
+  }
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('click', handleUploadClickOutside)
+  if (messagesContainer.value) {
+    messagesContainer.value.removeEventListener('scroll', checkScrollPosition)
+  }
 })
 </script>
 
@@ -1849,14 +2038,6 @@ onUnmounted(() => {
   border-radius: 6px;
   font-weight: 500;
 }
-/* Agent / RAG 开关打开时使用 success 绿色（按钮 + 文字） */
-.mode-switch {
-  --el-switch-on-color: var(--el-color-success);
-}
-.mode-switch :deep(.el-switch__label.is-active) {
-  color: var(--el-color-success);
-}
-
 /* ==================== 消息区域 ==================== */
 .chat-messages {
   flex: 1;
@@ -2183,11 +2364,28 @@ onUnmounted(() => {
 .input-textarea::placeholder {
   color: #b0ada5;
 }
-.input-bottom {
+
+/* 输入框内操作行：左侧药丸按钮 + 右侧发送 */
+.input-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 6px;
+  margin-top: 8px;
+  gap: 8px;
+}
+.input-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+.input-send-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .input-hint {
   font-size: 11px;
@@ -2237,14 +2435,127 @@ onUnmounted(() => {
   border-color: #d0cdc6;
   background: #eeebe5;
 }
+
+/* 输入框下方状态提示 */
 .input-footer {
-  text-align: center;
-  font-size: 11px;
-  color: #b0ada5;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 12px;
   margin-top: 8px;
   max-width: 820px;
   margin-left: auto;
   margin-right: auto;
+  font-size: 11px;
+  color: #b0ada5;
+}
+.footer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #6b6862;
+}
+.input-disclaimer {
+  font-size: 11px;
+  color: #b0ada5;
+}
+
+/* ==================== 药丸按钮（千问风格） ==================== */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d0cdc6;
+  border-radius: 14px;
+  background: #fff;
+  color: #6b6862;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+.pill-btn:hover {
+  border-color: #a2a2a2;
+  background: #f5f3f0;
+  color: #1e1d1a;
+}
+.pill-btn.active {
+  background: #f0f5ff;
+  border-color: #1677ff;
+  color: #1677ff;
+  font-weight: 500;
+}
+.pill-btn.active:hover {
+  background: #e0edff;
+  border-color: #0958d9;
+}
+/* 上传按钮（+ 号） */
+.upload-btn-wrap {
+  position: relative;
+}
+.pill-upload {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+  border-style: dashed;
+  color: #959288;
+}
+.pill-upload:hover,
+.pill-upload.open {
+  border-color: #1677ff;
+  color: #1677ff;
+  background: #f0f5ff;
+}
+
+/* 上传下拉菜单 */
+.upload-dropdown {
+  position: absolute;
+  bottom: 36px;
+  left: 0;
+  background: #fff;
+  border: 1px solid #e5e3de;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 4px;
+  min-width: 130px;
+  z-index: 100;
+}
+.upload-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #3d3c38;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.upload-dropdown-item:hover {
+  background: #eeebe5;
+}
+
+/* 下拉菜单动画 */
+.upload-menu-enter-active {
+  transition: all 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.upload-menu-leave-active {
+  transition: all 0.15s ease-in;
+}
+.upload-menu-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.upload-menu-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 
 /* ==================== Phase 3.3: Agent 推理过程（内联于 AI 消息气泡） ==================== */
@@ -2597,5 +2908,206 @@ onUnmounted(() => {
 .batch-bar-leave-from {
   opacity: 1;
   max-height: 50px;
+}
+
+/* ==================== 右侧对话时间轴（电量格导航，始终可见） ==================== */
+.chat-main {
+  position: relative;  /* 为时间轴绝对定位提供参考 */
+}
+.conv-timeline {
+  position: absolute;
+  right: 20px;           /* 与滚动条隔开一点距离 */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  display: flex;
+  align-items: center;
+  transition: width 0.25s ease, right 0.25s ease;
+  z-index: 10;
+  max-height: calc(100% - 120px);  /* 不超出消息区域 */
+  overflow-y: auto;                /* 消息很多时可滚动 */
+  scrollbar-width: none;           /* 隐藏时间轴自身的滚动条 */
+}
+.conv-timeline.expanded {
+  width: 180px;
+  right: 8px;
+}
+.timeline-track {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 0;
+}
+.timeline-segment {
+  display: flex;
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+  height: 8px;
+  transition: height 0.2s ease;
+}
+.conv-timeline.expanded .timeline-segment {
+  height: 34px;
+}
+.timeline-bar {
+  width: 6px;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #e0ddd6 0%, #c8c4bc 100%);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: auto;  /* 靠右对齐 */
+}
+.conv-timeline.expanded .timeline-bar {
+  width: 8px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #1677ff 0%, #69b1ff 100%);
+}
+.timeline-segment:hover .timeline-bar {
+  background: #3b82f6;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  transform: scaleX(1.3);
+}
+.timeline-bar.placeholder {
+  background: #e8e5e0;
+  opacity: 0.4;
+  height: 100%;
+}
+.timeline-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  justify-content: flex-end;
+}
+
+/* hover 展开的气泡 tooltip（向左展开） */
+.timeline-tooltip {
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1e1d1a;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 6px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+  pointer-events: none;
+}
+/* 气泡小三角（指向右侧的条形） */
+.timeline-tooltip::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-left-color: #1e1d1a;
+}
+
+/* tooltip 动画 */
+.timeline-tip-enter-active {
+  transition: all 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.timeline-tip-leave-active {
+  transition: all 0.15s ease-in;
+}
+.timeline-tip-enter-from {
+  opacity: 0;
+  transform: translateX(6px);
+}
+.timeline-tip-leave-to {
+  opacity: 0;
+  transform: translateX(4px);
+}
+
+/* ==================== 滚动到底部按钮 ==================== */
+.scroll-bottom-btn {
+  position: sticky;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e0ddd6;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  margin: 0 auto;
+  margin-top: -44px; /* 悬浮在底部上方，不占用流式空间 */
+  transition: all 0.2s ease;
+}
+.scroll-bottom-btn:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 12px rgba(59,130,246,0.25);
+}
+
+/* SVG 环形进度（流式中显示） */
+.scroll-btn-ring {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.scroll-bottom-btn.streaming .scroll-btn-ring {
+  opacity: 1;
+}
+.scroll-btn-ring.spinning {
+  animation: spin 2s linear infinite;
+}
+.scroll-bottom-btn.streaming .ring-progress {
+  stroke-dashoffset: 23.5;  /* ~75% 露出，暗示正在进行 */
+  transition: stroke-dashoffset 0.6s;
+}
+
+.scroll-btn-icon {
+  position: relative;
+  color: #6b6862;
+  transition: color 0.2s;
+  z-index: 1;
+}
+.scroll-bottom-btn:hover .scroll-btn-icon {
+  color: #3b82f6;
+}
+.scroll-bottom-btn.streaming .scroll-btn-icon {
+  color: #3b82f6;
+}
+
+/* 按钮过渡动画 */
+.scroll-btn-enter-active {
+  transition: all 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.scroll-btn-leave-active {
+  transition: all 0.2s ease-in;
+}
+.scroll-btn-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(12px);
+}
+.scroll-btn-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+
+/* 消息闪烁高亮（点击跳转后） */
+:deep(.msg-flash) {
+  animation: msg-flash-anim 1.2s ease-out;
+}
+@keyframes msg-flash-anim {
+  0%   { background-color: rgba(59, 130, 246, 0.15); }
+  100% { background-color: transparent; }
 }
 </style>

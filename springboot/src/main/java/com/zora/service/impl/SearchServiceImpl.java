@@ -1,13 +1,10 @@
 package com.zora.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zora.entity.dto.SearchResult;
-import com.zora.entity.User;
 import com.zora.exception.BadRequestException;
-import com.zora.exception.NotFoundException;
 import com.zora.mapper.ChatMessageMapper;
-import com.zora.mapper.UserMapper;
 import com.zora.service.SearchService;
+import com.zora.utils.UserContext;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,12 +52,12 @@ public class SearchServiceImpl implements SearchService {
     private ChatMessageMapper chatMessageMapper;
 
     @Resource
-    private UserMapper userMapper;
+    private UserContext userContext;
 
     @Override
     public Map<String, Object> searchMessages(String email, String keyword, int page, int size) {
-        // 1. 查找用户
-        User user = findUserByEmail(email);
+        // 1. 获取当前用户 ID
+        Integer userId = userContext.getUserId();
 
         // 2. 关键词校验
         if (keyword == null || keyword.isBlank()) {
@@ -81,10 +78,10 @@ public class SearchServiceImpl implements SearchService {
 
         // 5. 执行搜索
         long offset = (long) (page - 1) * size;
-        long total = chatMessageMapper.fulltextSearchCount(user.getId(), escapedKeyword);
+        long total = chatMessageMapper.fulltextSearchCount(userId, escapedKeyword);
         List<SearchResult> results;
         if (total > 0) {
-            results = chatMessageMapper.fulltextSearch(user.getId(), escapedKeyword, offset, size);
+            results = chatMessageMapper.fulltextSearch(userId, escapedKeyword, offset, size);
             // 6. Java 层高亮处理
             for (SearchResult r : results) {
                 r.setHighlightContent(highlightContent(keyword, r.getContent()));
@@ -166,16 +163,4 @@ public class SearchServiceImpl implements SearchService {
         return highlighted;
     }
 
-    /**
-     * 根据邮箱查找用户
-     */
-    private User findUserByEmail(String email) {
-        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(User::getEmail, email);
-        User user = userMapper.selectOne(wrapper);
-        if (user == null) {
-            throw new NotFoundException("用户不存在");
-        }
-        return user;
-    }
 }

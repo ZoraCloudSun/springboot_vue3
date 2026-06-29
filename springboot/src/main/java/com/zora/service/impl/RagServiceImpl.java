@@ -10,6 +10,7 @@ import com.zora.exception.NotFoundException;
 import com.zora.mapper.*;
 import com.zora.service.RagProcessingService;
 import com.zora.service.RagService;
+import com.zora.utils.UserContext;
 import com.zora.utils.FileTypeUtil;
 
 import dev.langchain4j.data.document.Metadata;
@@ -67,7 +68,7 @@ public class RagServiceImpl implements RagService {
     }
 
     @Resource
-    private UserMapper userMapper;
+    private UserContext userContext;
 
     @Resource
     private KnowledgeBaseMapper knowledgeBaseMapper;
@@ -110,8 +111,8 @@ public class RagServiceImpl implements RagService {
             throw new BadRequestException("知识库名称不能超过 200 个字符");
         }
 
-        User user = findUserByEmail(email);
-        KnowledgeBase kb = new KnowledgeBase(user.getId(), name.trim(),
+        Integer userId = userContext.getUserId();
+        KnowledgeBase kb = new KnowledgeBase(userId, name.trim(),
                 description != null ? description.trim() : "");
         knowledgeBaseMapper.insert(kb);
 
@@ -127,10 +128,10 @@ public class RagServiceImpl implements RagService {
 
     @Override
     public List<Map<String, Object>> listKnowledgeBases(String email) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
 
         LambdaQueryWrapper<KnowledgeBase> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(KnowledgeBase::getUserId, user.getId())
+        wrapper.eq(KnowledgeBase::getUserId, userId)
                 .isNull(KnowledgeBase::getDeletedAt)
                 .orderByDesc(KnowledgeBase::getUpdatedAt);
         List<KnowledgeBase> kbs = knowledgeBaseMapper.selectList(wrapper);
@@ -432,11 +433,11 @@ public class RagServiceImpl implements RagService {
 
     @Override
     public List<Map<String, Object>> listDeletedKnowledgeBases(String email) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
 
         // 查询当前用户所有已软删除的知识库
         LambdaQueryWrapper<KnowledgeBase> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(KnowledgeBase::getUserId, user.getId())
+        wrapper.eq(KnowledgeBase::getUserId, userId)
                 .isNotNull(KnowledgeBase::getDeletedAt)
                 .orderByDesc(KnowledgeBase::getDeletedAt);
         List<KnowledgeBase> deletedKbs = knowledgeBaseMapper.selectList(wrapper);
@@ -474,8 +475,8 @@ public class RagServiceImpl implements RagService {
         }
 
         // 2. 验证所有权
-        User user = findUserByEmail(email);
-        if (!kb.getUserId().equals(user.getId())) {
+        Integer userId = userContext.getUserId();
+        if (!kb.getUserId().equals(userId)) {
             throw new ForbiddenException("无权恢复此知识库");
         }
 
@@ -548,8 +549,8 @@ public class RagServiceImpl implements RagService {
         }
 
         // 2. 验证所有权
-        User user = findUserByEmail(email);
-        if (!kb.getUserId().equals(user.getId())) {
+        Integer userId = userContext.getUserId();
+        if (!kb.getUserId().equals(userId)) {
             throw new ForbiddenException("无权删除此知识库");
         }
 
@@ -595,8 +596,8 @@ public class RagServiceImpl implements RagService {
         // 验证知识库所有权（包括已软删除的 KB）
         KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
         if (kb != null) {
-            User user = findUserByEmail(email);
-            if (!kb.getUserId().equals(user.getId())) {
+            Integer userId = userContext.getUserId();
+            if (!kb.getUserId().equals(userId)) {
                 throw new ForbiddenException("无权访问此知识库");
             }
         }
@@ -637,8 +638,8 @@ public class RagServiceImpl implements RagService {
         // 2. 加载知识库并验证所有权
         KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
         if (kb != null) {
-            User user = findUserByEmail(email);
-            if (!kb.getUserId().equals(user.getId())) {
+            Integer userId = userContext.getUserId();
+            if (!kb.getUserId().equals(userId)) {
                 throw new ForbiddenException("无权恢复此文档");
             }
 
@@ -714,8 +715,8 @@ public class RagServiceImpl implements RagService {
         // 2. 验证所有权
         KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
         if (kb != null) {
-            User user = findUserByEmail(email);
-            if (!kb.getUserId().equals(user.getId())) {
+            Integer userId = userContext.getUserId();
+            if (!kb.getUserId().equals(userId)) {
                 throw new ForbiddenException("无权删除此文档");
             }
         }
@@ -757,8 +758,8 @@ public class RagServiceImpl implements RagService {
         // 验证所有权
         KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
         if (kb != null) {
-            User user = findUserByEmail(email);
-            if (!kb.getUserId().equals(user.getId())) {
+            Integer userId = userContext.getUserId();
+            if (!kb.getUserId().equals(userId)) {
                 throw new ForbiddenException("无权操作此知识库");
             }
         }
@@ -788,28 +789,15 @@ public class RagServiceImpl implements RagService {
     // ==================== 私有辅助方法 ====================
 
     /**
-     * 根据邮箱查找用户
-     */
-    private User findUserByEmail(String email) {
-        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(User::getEmail, email);
-        User user = userMapper.selectOne(wrapper);
-        if (user == null) {
-            throw new NotFoundException("用户不存在");
-        }
-        return user;
-    }
-
-    /**
      * 查找知识库并验证所有权
      */
     private KnowledgeBase findKnowledgeBase(Long kbId, String email) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
         KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
         if (kb == null || kb.getDeletedAt() != null) {
             throw new NotFoundException("知识库不存在");
         }
-        if (!kb.getUserId().equals(user.getId())) {
+        if (!kb.getUserId().equals(userId)) {
             throw new ForbiddenException("无权访问此知识库");
         }
         return kb;

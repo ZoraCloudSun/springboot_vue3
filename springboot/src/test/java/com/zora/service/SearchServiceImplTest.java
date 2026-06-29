@@ -5,7 +5,7 @@ import com.zora.entity.User;
 import com.zora.exception.BadRequestException;
 import com.zora.exception.NotFoundException;
 import com.zora.mapper.ChatMessageMapper;
-import com.zora.mapper.UserMapper;
+import com.zora.utils.UserContext;
 import com.zora.service.impl.SearchServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,7 +35,7 @@ class SearchServiceImplTest {
     private ChatMessageMapper chatMessageMapper;
 
     @Mock
-    private UserMapper userMapper;
+    private UserContext userContext;
 
     @InjectMocks
     private SearchServiceImpl searchService;
@@ -48,7 +48,7 @@ class SearchServiceImplTest {
         User mockUser = new User();
         mockUser.setId(TEST_USER_ID);
         mockUser.setEmail(TEST_EMAIL);
-        lenient().when(userMapper.selectOne(any())).thenReturn(mockUser);
+        lenient().when(userContext.getUserId()).thenReturn(mockUser.getId());
     }
 
     @Nested
@@ -132,7 +132,7 @@ class SearchServiceImplTest {
         @DisplayName("邮箱对应无用户：抛出 NotFoundException")
         void shouldThrowNotFoundWhenUserMissing() {
             // 覆盖 setUp 的 mock
-            when(userMapper.selectOne(any())).thenReturn(null);
+            when(userContext.getUserId()).thenThrow(new com.zora.exception.NotFoundException("用户不存在"));
 
             assertThrows(NotFoundException.class,
                     () -> searchService.searchMessages("ghost@example.com", "test", 1, 20));

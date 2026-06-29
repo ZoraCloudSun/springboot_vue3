@@ -4,7 +4,7 @@ import com.zora.exception.BadRequestException;
 import com.zora.exception.NotFoundException;
 import com.zora.mapper.ChatConversationMapper;
 import com.zora.mapper.ChatMessageMapper;
-import com.zora.mapper.UserMapper;
+import com.zora.utils.UserContext;
 import com.zora.service.impl.AiChatServiceImpl;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.*;
 class AiChatServiceImplTest {
 
     @Mock
-    private UserMapper userMapper;
+    private UserContext userContext;
     @Mock
     private ChatConversationMapper conversationMapper;
     @Mock
@@ -54,7 +54,7 @@ class AiChatServiceImplTest {
     void setUp() {
         AiChatServiceImpl realService = new AiChatServiceImpl();
         // 注入 mock 的 Mapper 到真实实例
-        ReflectionTestUtils.setField(realService, "userMapper", userMapper);
+        ReflectionTestUtils.setField(realService, "userContext", userContext);
         ReflectionTestUtils.setField(realService, "conversationMapper", conversationMapper);
         ReflectionTestUtils.setField(realService, "messageMapper", messageMapper);
         ReflectionTestUtils.setField(realService, "stringRedisTemplate", stringRedisTemplate);

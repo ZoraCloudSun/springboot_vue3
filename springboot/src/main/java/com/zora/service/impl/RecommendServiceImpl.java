@@ -7,6 +7,7 @@ import com.zora.entity.dto.SearchResult;
 import com.zora.exception.NotFoundException;
 import com.zora.mapper.*;
 import com.zora.service.RecommendService;
+import com.zora.utils.UserContext;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,19 +69,19 @@ public class RecommendServiceImpl implements RecommendService {
     private KbDocumentMapper kbDocumentMapper;
 
     @Resource
-    private UserMapper userMapper;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private UserContext userContext;
 
     private final ObjectMapper jsonMapper = new ObjectMapper();
 
     @Override
     public Map<String, Object> getRecommendations(String email) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
 
         // 尝试从 Redis 缓存获取
-        String cacheKey = "recommend:" + user.getId();
+        String cacheKey = "recommend:" + userId;
         try {
             String cached = stringRedisTemplate.opsForValue().get(cacheKey);
             if (cached != null) {
@@ -93,9 +94,9 @@ public class RecommendServiceImpl implements RecommendService {
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("relatedConversations", findRelatedConversations(user));
-        result.put("suggestedQuestions", generateSuggestedQuestions(user));
-        result.put("popularKnowledge", findPopularKnowledge(user));
+        result.put("relatedConversations", findRelatedConversations(userId));
+        result.put("suggestedQuestions", generateSuggestedQuestions(userId));
+        result.put("popularKnowledge", findPopularKnowledge(userId));
 
         try {
             stringRedisTemplate.opsForValue().set(cacheKey,
@@ -108,10 +109,10 @@ public class RecommendServiceImpl implements RecommendService {
         return result;
     }
 
-    private List<Map<String, Object>> findRelatedConversations(User user) {
+    private List<Map<String, Object>> findRelatedConversations(Integer userId) {
         try {
             LambdaQueryWrapper<ChatConversation> convWrapper = new LambdaQueryWrapper<>();
-            convWrapper.eq(ChatConversation::getUserId, user.getId())
+            convWrapper.eq(ChatConversation::getUserId, userId)
                     .isNull(ChatConversation::getDeletedAt)
                     .orderByDesc(ChatConversation::getUpdatedAt)
                     .last("LIMIT 20");
@@ -135,7 +136,7 @@ public class RecommendServiceImpl implements RecommendService {
             if (keywords.isEmpty()) return Collections.emptyList();
 
             List<SearchResult> searchResults = chatMessageMapper.fulltextSearch(
-                    user.getId(), keywords, 0, 20);
+                    userId, keywords, 0, 20);
 
             Set<Long> recentConvIds = new HashSet<>();
             for (int i = 0; i < Math.min(5, allConvs.size()); i++) {
@@ -180,10 +181,10 @@ public class RecommendServiceImpl implements RecommendService {
         }
     }
 
-    private List<String> generateSuggestedQuestions(User user) {
+    private List<String> generateSuggestedQuestions(Integer userId) {
         try {
             LambdaQueryWrapper<ChatConversation> convWrapper = new LambdaQueryWrapper<>();
-            convWrapper.eq(ChatConversation::getUserId, user.getId())
+            convWrapper.eq(ChatConversation::getUserId, userId)
                     .isNull(ChatConversation::getDeletedAt)
                     .orderByDesc(ChatConversation::getUpdatedAt)
                     .last("LIMIT 3");
@@ -231,10 +232,10 @@ public class RecommendServiceImpl implements RecommendService {
         }
     }
 
-    private List<Map<String, Object>> findPopularKnowledge(User user) {
+    private List<Map<String, Object>> findPopularKnowledge(Integer userId) {
         try {
             LambdaQueryWrapper<KnowledgeBase> kbWrapper = new LambdaQueryWrapper<>();
-            kbWrapper.eq(KnowledgeBase::getUserId, user.getId())
+            kbWrapper.eq(KnowledgeBase::getUserId, userId)
                     .isNull(KnowledgeBase::getDeletedAt)
                     .orderByDesc(KnowledgeBase::getUpdatedAt);
             List<KnowledgeBase> kbs = knowledgeBaseMapper.selectList(kbWrapper);
@@ -302,13 +303,4 @@ public class RecommendServiceImpl implements RecommendService {
         return keywords.toString();
     }
 
-    private User findUserByEmail(String email) {
-        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(User::getEmail, email);
-        User user = userMapper.selectOne(wrapper);
-        if (user == null) {
-            throw new NotFoundException("用户不存在");
-        }
-        return user;
-    }
 }

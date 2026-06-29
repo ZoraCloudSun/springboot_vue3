@@ -80,7 +80,7 @@ public class UserContext {
             userIdCache.set(user.getId());
             return user.getId();
         }
-        return null;
+        throw new com.zora.exception.NotFoundException("用户不存在");
     }
 
     /**

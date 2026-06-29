@@ -23,6 +23,7 @@ import com.zora.exception.BadRequestException;
 import com.zora.exception.ForbiddenException;
 import com.zora.exception.NotFoundException;
 import com.zora.mapper.*;
+import com.zora.utils.UserContext;
 import com.zora.service.RagProcessingService;
 import com.zora.service.impl.RagServiceImpl;
 import com.zora.service.impl.SimpleEmbeddingStore;
@@ -45,7 +46,7 @@ import static org.mockito.Mockito.*;
 class RagServiceImplTest {
 
     @Mock
-    private UserMapper userMapper;
+    private UserContext userContext;
     @Mock
     private KnowledgeBaseMapper knowledgeBaseMapper;
     @Mock
@@ -79,7 +80,7 @@ class RagServiceImplTest {
         testUser.setRole("user");
 
         // 默认 stub: 用户存在
-        lenient().when(userMapper.selectOne(any())).thenReturn(testUser);
+        lenient().when(userContext.getUserId()).thenReturn(testUser.getId());
 
         // 默认 stub: 嵌入模型（避免 NPE）
         Embedding dummyEmbedding = new Embedding(new float[] { 0.1f, 0.2f, 0.3f });

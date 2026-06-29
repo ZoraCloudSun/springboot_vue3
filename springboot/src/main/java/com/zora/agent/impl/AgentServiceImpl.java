@@ -13,13 +13,12 @@ import com.zora.agent.tool.WebSearchTool;
 import com.zora.config.AgentConfig;
 import com.zora.entity.ChatConversation;
 import com.zora.entity.ChatMessage;
-import com.zora.entity.User;
 import com.zora.exception.BadRequestException;
 import com.zora.exception.NotFoundException;
 import com.zora.exception.RateLimitException;
 import com.zora.mapper.ChatConversationMapper;
 import com.zora.mapper.ChatMessageMapper;
-import com.zora.mapper.UserMapper;
+import com.zora.utils.UserContext;
 import com.zora.service.ConversationSummaryService;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -162,9 +161,9 @@ public class AgentServiceImpl implements AgentService {
     @Resource
     private AgentConfig agentConfig;
 
-    /** 用户表 Mapper */
+    /** 用户上下文（替代 UserMapper 查用户） */
     @Resource
-    private UserMapper userMapper;
+    private UserContext userContext;
 
     /** 对话会话表 Mapper */
     @Resource
@@ -249,15 +248,15 @@ public class AgentServiceImpl implements AgentService {
         // 2. Prompt 注入检测 — 18 种攻击模式
         checkPromptInjection(userMessage);
 
-        // 3. 查找用户
-        User user = findUserByEmail(email);
+        // 3. 获取当前用户 ID
+        Integer userId = userContext.getUserId();
 
         // 4. 解析或创建对话
         ChatConversation conversation;
         if (conversationId == null) {
-            conversation = createConversation(user.getId(), generateTitle(userMessage));
+            conversation = createConversation(userId, generateTitle(userMessage));
         } else {
-            conversation = findConversation(conversationId, user.getId());
+            conversation = findConversation(conversationId, userId);
         }
 
         // 5. 保存用户消息
@@ -790,16 +789,6 @@ public class AgentServiceImpl implements AgentService {
     }
 
     // ==================== 用户与对话管理 ====================
-
-    private User findUserByEmail(String email) {
-        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(User::getEmail, email);
-        User user = userMapper.selectOne(wrapper);
-        if (user == null) {
-            throw new NotFoundException("用户不存在");
-        }
-        return user;
-    }
 
     private ChatConversation findConversation(Long conversationId, Integer userId) {
         LambdaQueryWrapper<ChatConversation> wrapper = new LambdaQueryWrapper<>();

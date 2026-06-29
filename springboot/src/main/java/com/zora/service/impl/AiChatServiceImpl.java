@@ -11,7 +11,7 @@ import com.zora.exception.RateLimitException;
 import com.zora.entity.ChatConversation;
 import com.zora.mapper.ChatConversationMapper;
 import com.zora.mapper.ChatMessageMapper;
-import com.zora.mapper.UserMapper;
+import com.zora.utils.UserContext;
 import com.zora.service.AiChatService;
 import com.zora.service.RagService;
 
@@ -166,7 +166,7 @@ public class AiChatServiceImpl implements AiChatService {
 
     /** 用户表 Mapper（用于根据邮箱查找用户） */
     @Resource
-    private UserMapper userMapper;
+    private UserContext userContext;
 
     /** 对话会话表 Mapper（CRUD 操作） */
     @Resource
@@ -222,14 +222,14 @@ public class AiChatServiceImpl implements AiChatService {
         checkPromptInjection(userMessage);
 
         // 1. 查找用户（邮箱不存在则抛 NotFoundException）
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
 
         // 2. 解析或创建对话（conversationId 为 null 时自动新建，标题取自用户消息前 30 字符）
         ChatConversation conversation;
         if (conversationId == null) {
-            conversation = createConversation(user.getId(), generateTitle(userMessage));
+            conversation = createConversation(userId, generateTitle(userMessage));
         } else {
-            conversation = findConversation(conversationId, user.getId());
+            conversation = findConversation(conversationId, userId);
         }
 
         // 3. 保存用户消息到 MySQL（后续 AI 回复也会保存）
@@ -304,9 +304,9 @@ public class AiChatServiceImpl implements AiChatService {
      */
     @Override
     public List<Map<String, Object>> listConversations(String email) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
         LambdaQueryWrapper<ChatConversation> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ChatConversation::getUserId, user.getId())
+        wrapper.eq(ChatConversation::getUserId, userId)
                 .isNull(ChatConversation::getDeletedAt) // P1-6: 排除已软删除的对话
                 .orderByDesc(ChatConversation::getUpdatedAt);
         List<ChatConversation> conversations = conversationMapper.selectList(wrapper);
@@ -335,9 +335,9 @@ public class AiChatServiceImpl implements AiChatService {
      */
     @Override
     public List<Map<String, Object>> getMessages(String email, Long conversationId) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
         // 验证对话归属（不属于当前用户则抛 ForbiddenException）
-        findConversation(conversationId, user.getId());
+        findConversation(conversationId, userId);
         LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ChatMessage::getConversationId, conversationId)
                 .isNull(ChatMessage::getDeletedAt) // P1-6: 排除已软删除的消息
@@ -373,8 +373,8 @@ public class AiChatServiceImpl implements AiChatService {
      */
     @Override
     public void deleteConversation(String email, Long conversationId) {
-        User user = findUserByEmail(email);
-        findConversation(conversationId, user.getId());
+        Integer userId = userContext.getUserId();
+        findConversation(conversationId, userId);
 
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
 
@@ -406,8 +406,8 @@ public class AiChatServiceImpl implements AiChatService {
      */
     @Override
     public Map<String, Object> createNewConversation(String email, String title) {
-        User user = findUserByEmail(email);
-        ChatConversation conversation = createConversation(user.getId(),
+        Integer userId = userContext.getUserId();
+        ChatConversation conversation = createConversation(userId,
                 title != null && !title.isBlank() ? title : "新的对话");
         Map<String, Object> map = new HashMap<>();
         map.put("id", conversation.getId());
@@ -428,11 +428,11 @@ public class AiChatServiceImpl implements AiChatService {
      */
     @Override
     public List<Map<String, Object>> listDeletedConversations(String email) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
         java.time.LocalDateTime threshold = java.time.LocalDateTime.now().minusDays(30);
 
         LambdaQueryWrapper<ChatConversation> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ChatConversation::getUserId, user.getId())
+        wrapper.eq(ChatConversation::getUserId, userId)
                 .isNotNull(ChatConversation::getDeletedAt)
                 .ge(ChatConversation::getDeletedAt, threshold) // 只返回 30 天内的
                 .orderByDesc(ChatConversation::getDeletedAt);
@@ -467,12 +467,12 @@ public class AiChatServiceImpl implements AiChatService {
      */
     @Override
     public void restoreConversation(String email, Long conversationId) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
         ChatConversation conversation = conversationMapper.selectById(conversationId);
         if (conversation == null) {
             throw new NotFoundException("对话不存在");
         }
-        if (!conversation.getUserId().equals(user.getId())) {
+        if (!conversation.getUserId().equals(userId)) {
             throw new ForbiddenException("无权访问此对话");
         }
         if (conversation.getDeletedAt() == null) {
@@ -511,12 +511,12 @@ public class AiChatServiceImpl implements AiChatService {
      */
     @Override
     public void permanentDeleteConversation(String email, Long conversationId) {
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
         ChatConversation conversation = conversationMapper.selectById(conversationId);
         if (conversation == null) {
             throw new NotFoundException("对话不存在");
         }
-        if (!conversation.getUserId().equals(user.getId())) {
+        if (!conversation.getUserId().equals(userId)) {
             throw new ForbiddenException("无权访问此对话");
         }
         // 只允许永久删除已软删除的对话（防止误操作删除正常对话）
@@ -652,23 +652,6 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     // ==================== 私有辅助方法 ====================
-
-    /**
-     * 根据邮箱查找用户
-     *
-     * @param email 用户邮箱
-     * @return 用户实体
-     * @throws NotFoundException 邮箱未注册
-     */
-    private User findUserByEmail(String email) {
-        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(User::getEmail, email);
-        User user = userMapper.selectOne(wrapper);
-        if (user == null) {
-            throw new NotFoundException("用户不存在");
-        }
-        return user;
-    }
 
     /**
      * 查找对话并验证归属
@@ -975,7 +958,7 @@ public class AiChatServiceImpl implements AiChatService {
         checkPromptInjection(userMessage);
 
         // 1. 查找用户
-        User user = findUserByEmail(email);
+        Integer userId = userContext.getUserId();
 
         // 2. Phase 2: RAG 检索上下文（仅在指定知识库时执行）
         String ragContext = "";
@@ -997,9 +980,9 @@ public class AiChatServiceImpl implements AiChatService {
         // 3. 解析或创建对话
         ChatConversation conversation;
         if (conversationId == null) {
-            conversation = createConversation(user.getId(), generateTitle(userMessage));
+            conversation = createConversation(userId, generateTitle(userMessage));
         } else {
-            conversation = findConversation(conversationId, user.getId());
+            conversation = findConversation(conversationId, userId);
         }
 
         // 4. 保存用户消息

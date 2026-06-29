@@ -11,7 +11,7 @@ import com.zora.exception.NotFoundException;
 import com.zora.exception.RateLimitException;
 import com.zora.mapper.ChatConversationMapper;
 import com.zora.mapper.ChatMessageMapper;
-import com.zora.mapper.UserMapper;
+import com.zora.utils.UserContext;
 import com.zora.service.ConversationSummaryService;
 
 import dev.langchain4j.data.message.AiMessage;
@@ -83,7 +83,7 @@ class AgentServiceImplTest {
     private AgentConfig.MultiAgentConfig multiAgentConfig;
 
     @Mock
-    private UserMapper userMapper;
+    private UserContext userContext;
 
     @Mock
     private ChatConversationMapper conversationMapper;
@@ -147,7 +147,7 @@ class AgentServiceImplTest {
         lenient().when(stringRedisTemplate.expire(anyString(), any())).thenReturn(true);
 
         // 默认用户查找成功
-        lenient().when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(testUser);
+        lenient().when(userContext.getUserId()).thenReturn(testUser.getId());
         // 默认对话操作
         lenient().when(conversationMapper.selectById(anyLong())).thenReturn(testConversation);
         lenient().when(conversationMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(testConversation);
@@ -236,7 +236,7 @@ class AgentServiceImplTest {
         @DisplayName("用户不存在时应抛出 NotFoundException")
         void shouldThrowNotFoundExceptionWhenUserNotFound() {
             when(zSetOperations.zCard(anyString())).thenReturn(0L);
-            when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(userContext.getUserId()).thenThrow(new com.zora.exception.NotFoundException("用户不存在"));
 
             assertThrows(NotFoundException.class, () -> {
                 agentService.agentStreamChat(TEST_EMAIL, TEST_MESSAGE, TEST_CONVERSATION_ID);

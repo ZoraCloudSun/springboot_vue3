@@ -490,58 +490,12 @@
           </div>
         </div>
 
-        <!-- 滚动到底部按钮（离开底部时显示，流式中带加载动画） -->
-        <Transition name="scroll-btn">
-          <button
-            v-if="showScrollBtn"
-            class="scroll-bottom-btn"
-            :class="{ streaming: isStreaming }"
-            @click="handleScrollToBottom"
-          >
-            <svg
-              class="scroll-btn-ring"
-              :class="{ spinning: isStreaming }"
-              viewBox="0 0 36 36"
-            >
-              <circle cx="18" cy="18" r="15" fill="none" stroke="#e0ddd6" stroke-width="2" />
-              <circle
-                class="ring-progress"
-                cx="18" cy="18" r="15" fill="none" stroke="#3b82f6" stroke-width="2"
-                stroke-linecap="round"
-                stroke-dasharray="94.2" stroke-dashoffset="94.2"
-              />
-            </svg>
-            <el-icon :size="16" class="scroll-btn-icon"><ArrowDown /></el-icon>
-          </button>
-        </Transition>
+        <!-- 滚动到底部按钮 -->
+        <ChatScrollButton :visible="showScrollBtn" :streaming="isStreaming" @click="handleScrollToBottom" />
       </div>
 
-      <!-- 右侧对话时间轴（独立于消息滚动区，始终可见） -->
-      <div
-        class="conv-timeline"
-        :class="{ expanded: timelineHovered }"
-        @mouseenter="timelineHovered = true"
-        @mouseleave="timelineHovered = false"
-      >
-        <div class="timeline-track">
-          <div
-            v-for="(item, idx) in userMessageAnchors"
-            :key="idx"
-            class="timeline-segment"
-            @click="scrollToUserMessage(item.index)"
-          >
-            <div class="timeline-bar"></div>
-            <Transition name="timeline-tip">
-              <div v-if="timelineHovered" class="timeline-tooltip">
-                {{ truncateText(item.preview, 40) }}
-              </div>
-            </Transition>
-          </div>
-          <div v-if="userMessageAnchors.length === 0" class="timeline-empty">
-            <div class="timeline-bar placeholder"></div>
-          </div>
-        </div>
-      </div>
+      <!-- 右侧对话时间轴 -->
+      <ChatTimelineBar :messages="messages" @scroll-to="scrollToUserMessage" />
 
       <!-- 输入区域 -->
       <div class="chat-input-area">
@@ -703,6 +657,8 @@ import {
 } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
+import ChatScrollButton from '@/components/chat/ChatScrollButton.vue'
+import ChatTimelineBar from '@/components/chat/ChatTimelineBar.vue'
 import DOMPurify from 'dompurify'
 import 'highlight.js/styles/github.css'
 import katex from 'katex'
